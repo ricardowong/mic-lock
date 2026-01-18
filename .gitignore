@@ -1,0 +1,26 @@
+## Build Results
+bin/
+obj/
+dist/
+
+## User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Visual Studio & VS Code
+.vs/
+.vscode/
+*.DotSettings.user
+
+## Test Results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+## Application Logs
+*.log
+settings.json

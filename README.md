@@ -29,15 +29,17 @@ Many popular communication and gaming applications (Discord's auto-gain, Zoom, S
 
 ## 🚀 Key Capabilities
 
-- **Zero-Latency WASAPI Enforcement:** Implements Windows native `IAudioEndpointVolumeCallback`. The microsecond Discord or Zoom alters the endpoint scalar, MicLock's callback executes and snaps it back to your target level with loop-prevention guards.
-- **Dynamic System Tray Presence:**
-  - Status indicator icon (Green Shield when locked, muted/warning when unlocked).
-  - Tray tooltip shows current lock percentage and active microphone name.
-  - Quick right-click context menu: Toggle lock, pick volume presets (`50%`, `75%`, `80%`, `90%`, `100%`), manage autostart, or open dashboard.
-  - Minimizes silently to notification area on window close.
-- **Hardware Device Pinning & Dynamic Fallback:** Lock your specific USB microphone (e.g. Samson Go Mic, Blue Yeti, Elgato Wave) or leave it on `[Default Device]` to follow Windows communication routing.
-- **Resilient USB Hotplugging:** Monitors audio device topology via `IMMNotificationClient`. If you unplug your USB microphone and plug it back in, MicLock detects the arrival and re-attaches immediately.
-- **Zero-Elevation Autostart:** Manages `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` with the `--minimized` flag. Never triggers UAC prompts or console tabs on Windows boot.
+- **Zero-Latency WASAPI Volume Enforcement:** Implements Windows native `IAudioEndpointVolumeCallback`. The microsecond Discord or Zoom alters the endpoint scalar, MicLock snaps it back to your target level with loop-prevention guards.
+- **Tray Icon Mouse Wheel Volume Control:** Scroll your mouse wheel directly over the system tray icon to raise or lower microphone volume in 5% increments, complete with a live tooltip and SoundSwitch-style OSD banner.
+- **SoundSwitch-Style OSD Floating Banner:** A sleek, non-intrusive floating dark banner (inspired by SoundSwitch) that displays when muting, unmuting, or adjusting volume, complete with a cyan microphone icon, mute indicator, and active device name.
+- **PowerToys & Keyboard Remap Ready:**
+  - **Global Hotkey:** `Ctrl + Shift + Alt + M` (matching SoundSwitch standard).
+  - **CLI IPC Trigger:** `MicLock.exe --toggle-mute` communicates with the background instance in <15ms. Map any keyboard key (e.g. dedicated Mic button, F20) via PowerToys Keyboard Manager directly.
+- **Two Applications in One Suite:**
+  - 🛡️ **MicLock:** Complete desktop app with volume lock enforcement, mute toggle, device selector, tray volume scroll, and settings.
+  - 🎙️ **MicMute:** Ultra-simple, lightweight dedicated mute toggle tool with a 1-click button, tray middle-click toggle, and OSD banner.
+- **Hardware Device Pinning & USB Hotplugging:** Lock your specific USB microphone (Samson Go Mic, Blue Yeti, Elgato Wave) or follow `[Default Device]`. Re-attaches instantly if USB is unplugged and plugged back in.
+- **Zero-Elevation Autostart:** Per-user installation in `%LOCALAPPDATA%\Programs\MicLock` with autostart in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Zero UAC elevation required.
 
 ---
 
@@ -46,14 +48,14 @@ Many popular communication and gaming applications (Discord's auto-gain, Zoom, S
 ### Option 1: Installer (Recommended)
 Download **`MicLock-Setup-v1.0.0.exe`** from [Releases](../../releases).
 - Runs without administrator privileges.
-- Installs to `%LOCALAPPDATA%\Programs\MicLock`.
-- Offers desktop shortcut and automatic Windows startup.
+- Installs both **MicLock** and **MicMute** to `%LOCALAPPDATA%\Programs\MicLock`.
+- Offers desktop shortcuts and automatic Windows startup.
 - Includes a clean uninstaller in Windows Settings / Apps.
 
-### Option 2: Portable Single-File Executable
-Download **`MicLock.exe`** (~580 KB) from [Releases](../../releases).
-- Place it anywhere and run.
-- Zero dependencies required on modern Windows 11 (uses built-in .NET 8 desktop runtime).
+### Option 2: Portable Single-File Executables
+- **`MicLock.exe`**: Unified desktop app with volume lock, mute toggle, and tray scroll.
+- **`MicMute.exe`**: Lightweight dedicated mute toggle app with SoundSwitch OSD banner.
+- Self-contained, zero prerequisite installs needed.
 
 ---
 

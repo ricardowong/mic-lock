@@ -7,7 +7,7 @@ public class AppSettings
     public int TargetVolumePercent { get; set; } = 100;
     public bool IsLockEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; } = true;
-    public bool StartMinimized { get; set; } = true;
+    public bool StartMinimized { get; set; } = false;
     public bool ShowNotifications { get; set; } = true;
     public int MaxLogEntries { get; set; } = 100;
 

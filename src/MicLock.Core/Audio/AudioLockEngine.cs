@@ -15,6 +15,7 @@ public class AudioLockEngine : IAudioLockEngine
     private AudioEndpointVolumeNotificationDelegate? _volumeNotificationHandler;
     private string? _pinnedDeviceId;
     private bool _isRevertingVolume;
+    private bool _lastKnownMute;
     private bool _disposed;
 
     public bool IsLocked { get; set; } = true;
@@ -48,6 +49,7 @@ public class AudioLockEngine : IAudioLockEngine
     }
 
     public event EventHandler<int>? VolumeChanged;
+    public event EventHandler<bool>? MuteChanged;
     public event EventHandler<VolumeRestoredEventArgs>? VolumeRestored;
     public event EventHandler<AudioDeviceInfo?>? ActiveDeviceChanged;
     public event EventHandler<ActivityLogEntry>? LogEntryAdded;
@@ -167,6 +169,7 @@ public class AudioLockEngine : IAudioLockEngine
                 _activeEndpointVolume.OnVolumeNotification += _volumeNotificationHandler;
 
                 int currentVol = (int)Math.Round(_activeEndpointVolume.MasterVolumeLevelScalar * 100f);
+                _lastKnownMute = _activeEndpointVolume.Mute;
                 ActiveDevice = new AudioDeviceInfo
                 {
                     Id = _activeEndpoint.ID,
@@ -226,6 +229,13 @@ public class AudioLockEngine : IAudioLockEngine
         int currentPercent = (int)Math.Round(data.MasterVolume * 100f);
         VolumeChanged?.Invoke(this, currentPercent);
 
+        if (data.Muted != _lastKnownMute)
+        {
+            _lastKnownMute = data.Muted;
+            MuteChanged?.Invoke(this, data.Muted);
+            EmitLog(LogLevel.Info, data.Muted ? "Microphone muted (hardware/external)" : "Microphone unmuted (hardware/external)");
+        }
+
         if (!IsLocked || _isRevertingVolume) return;
 
         if (currentPercent != TargetVolumePercent)
@@ -270,6 +280,41 @@ public class AudioLockEngine : IAudioLockEngine
                 finally
                 {
                     _isRevertingVolume = false;
+                }
+            }
+        }
+    }
+
+    public bool ToggleMute()
+    {
+        lock (_syncLock)
+        {
+            if (_activeEndpointVolume != null)
+            {
+                bool newState = !_activeEndpointVolume.Mute;
+                SetMute(newState);
+                return newState;
+            }
+            return false;
+        }
+    }
+
+    public void SetMute(bool mute)
+    {
+        lock (_syncLock)
+        {
+            if (_activeEndpointVolume != null)
+            {
+                try
+                {
+                    _activeEndpointVolume.Mute = mute;
+                    _lastKnownMute = mute;
+                    MuteChanged?.Invoke(this, mute);
+                    EmitLog(LogLevel.Info, mute ? "Microphone Muted" : "Microphone Unmuted");
+                }
+                catch (Exception ex)
+                {
+                    EmitLog(LogLevel.Error, $"Failed to set mute: {ex.Message}");
                 }
             }
         }

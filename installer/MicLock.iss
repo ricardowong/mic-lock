@@ -35,13 +35,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\win-x64\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\win-x64\MicMute.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\MicLock.App\Assets\app.ico"; DestDir: "{app}\Assets"; Flags: ignoreversion
 Source: "..\src\MicLock.App\Assets\mic-locked.ico"; DestDir: "{app}\Assets"; Flags: ignoreversion
 Source: "..\src\MicLock.App\Assets\mic-unlocked.ico"; DestDir: "{app}\Assets"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\app.ico"; WorkingDir: "{app}"
+Name: "{autoprograms}\MicMute (Quick Mute)"; Filename: "{app}\MicMute.exe"; IconFilename: "{app}\Assets\app.ico"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\app.ico"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\MicMute"; Filename: "{app}\MicMute.exe"; IconFilename: "{app}\Assets\app.ico"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Registry]
 ; Standard Windows Run key for user autostart

@@ -1,4 +1,4 @@
-using MicLock.Core.System;
+using MicLock.Core.Sys;
 using Xunit;
 
 namespace MicLock.Tests;

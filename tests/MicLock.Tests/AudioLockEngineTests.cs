@@ -40,4 +40,22 @@ public class AudioLockEngineTests
         engine.IsLocked = false;
         Assert.False(engine.IsLocked);
     }
+
+    [Fact]
+    public void ToggleMute_CanBeInvoked_AndReturnsBooleanState()
+    {
+        using var engine = new AudioLockEngine();
+        bool bound = engine.SelectDevice(null);
+        if (bound)
+        {
+            bool initialMute = engine.IsMuted;
+            bool toggled = engine.ToggleMute();
+            Assert.Equal(!initialMute, toggled);
+            Assert.Equal(toggled, engine.IsMuted);
+
+            // Revert back
+            engine.SetMute(initialMute);
+            Assert.Equal(initialMute, engine.IsMuted);
+        }
+    }
 }

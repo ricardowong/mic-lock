@@ -1,7 +1,7 @@
 using System.Runtime.Versioning;
 using Microsoft.Win32;
 
-namespace MicLock.Core.System;
+namespace MicLock.Core.Sys;
 
 [SupportedOSPlatform("windows")]
 public class StartupManager

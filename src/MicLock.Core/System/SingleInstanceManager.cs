@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace MicLock.Core.System;
+namespace MicLock.Core.Sys;
 
 public class SingleInstanceManager : IDisposable
 {

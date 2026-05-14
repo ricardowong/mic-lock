@@ -1,8 +1,12 @@
 using System.Drawing;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
+using MicLock.Core.UI;
 using MicLock.App.ViewModels;
+using Application = System.Windows.Application;
 
 namespace MicLock.App.Tray;
 
@@ -11,11 +15,14 @@ public class TrayIconController : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private readonly MainViewModel _viewModel;
     private readonly Window _mainWindow;
+    private readonly OsdBannerWindow _osdBanner;
+    private readonly TrayWheelHook? _wheelHook;
 
     private readonly Icon _lockedIcon;
     private readonly Icon _unlockedIcon;
 
     private readonly ToolStripMenuItem _openItem;
+    private readonly ToolStripMenuItem _muteToggleItem;
     private readonly ToolStripMenuItem _lockToggleItem;
     private readonly ToolStripMenuItem _targetMenu;
     private readonly ToolStripMenuItem _startupItem;
@@ -25,6 +32,7 @@ public class TrayIconController : IDisposable
     {
         _viewModel = viewModel;
         _mainWindow = mainWindow;
+        _osdBanner = new OsdBannerWindow();
 
         // Load tray icons from embedded WPF resources or fallback to disk
         _lockedIcon = LoadIconFromResource("mic-locked.ico", SystemIcons.Shield);
@@ -41,6 +49,13 @@ public class TrayIconController : IDisposable
             Font = new Font(contextMenu.Font, System.Drawing.FontStyle.Bold)
         };
         _openItem.Click += (s, e) => ShowMainWindow();
+
+        _muteToggleItem = new ToolStripMenuItem("Mute Microphone")
+        {
+            CheckOnClick = false,
+            Checked = _viewModel.IsMuted
+        };
+        _muteToggleItem.Click += (s, e) => _viewModel.ToggleMute();
 
         _lockToggleItem = new ToolStripMenuItem("Lock Volume")
         {
@@ -80,11 +95,12 @@ public class TrayIconController : IDisposable
             {
                 _notifyIcon.Visible = false;
             }
-            System.Windows.Application.Current?.Shutdown();
+            Application.Current?.Shutdown();
         };
 
         contextMenu.Items.Add(_openItem);
         contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(_muteToggleItem);
         contextMenu.Items.Add(_lockToggleItem);
         contextMenu.Items.Add(_targetMenu);
         contextMenu.Items.Add(new ToolStripSeparator());
@@ -101,12 +117,31 @@ public class TrayIconController : IDisposable
         };
 
         _notifyIcon.DoubleClick += (s, e) => ShowMainWindow();
-        _notifyIcon.Click += (s, e) =>
+        _notifyIcon.MouseDown += (s, e) =>
         {
-            if (e is MouseEventArgs me && me.Button == MouseButtons.Left)
+            if (e.Button == MouseButtons.Left)
             {
                 ShowMainWindow();
             }
+            else if (e.Button == MouseButtons.Middle)
+            {
+                // Middle-click toggles microphone mute instantly!
+                _viewModel.ToggleMute();
+            }
+        };
+
+        // Install tray mouse wheel hook to adjust volume via scroll
+        _wheelHook = new TrayWheelHook(_notifyIcon, OnTrayMouseWheel);
+
+        // Wire Mute & Audio Engine events to OSD Banner
+        _viewModel.AudioEngine.MuteChanged += (s, muted) =>
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                _muteToggleItem.Checked = muted;
+                _muteToggleItem.Text = muted ? "Unmute Microphone" : "Mute Microphone";
+                _osdBanner.ShowMuteState(muted, _viewModel.SelectedDevice?.Name);
+            });
         };
 
         // Wire VM property changes to update Tray Icon & Tooltip
@@ -123,11 +158,31 @@ public class TrayIconController : IDisposable
                 UpdateTargetMenuChecks();
                 _notifyIcon.Text = TruncateTooltip(_viewModel.StatusTooltip);
             }
+            else if (e.PropertyName == nameof(MainViewModel.IsMuted))
+            {
+                _muteToggleItem.Checked = _viewModel.IsMuted;
+                _muteToggleItem.Text = _viewModel.IsMuted ? "Unmute Microphone" : "Mute Microphone";
+            }
             else if (e.PropertyName == nameof(MainViewModel.StartWithWindows))
             {
                 _startupItem.Checked = _viewModel.StartWithWindows;
             }
         };
+    }
+
+    private void OnTrayMouseWheel(int delta)
+    {
+        Application.Current?.Dispatcher.Invoke(() =>
+        {
+            int step = (delta > 0) ? 5 : -5;
+            _viewModel.AdjustVolume(step);
+
+            int current = _viewModel.TargetVolumePercent;
+            _notifyIcon.Text = TruncateTooltip($"Microphone: {current}%");
+
+            // Display SoundSwitch-style OSD volume banner
+            _osdBanner.ShowVolumeLevel(current, _viewModel.SelectedDevice?.Name);
+        });
     }
 
     private void UpdateTargetMenuChecks()
@@ -143,7 +198,7 @@ public class TrayIconController : IDisposable
 
     public void ShowMainWindow()
     {
-        var app = System.Windows.Application.Current;
+        var app = Application.Current;
         if (app == null) return;
 
         app.Dispatcher.Invoke(() =>
@@ -163,61 +218,108 @@ public class TrayIconController : IDisposable
         });
     }
 
-    public void ShowVolumeRestoredNotification(int previous, int restored, string device)
+    public void ShowVolumeRestoredNotification(int previousPercent, int restoredPercent, string deviceName)
     {
-        if (_viewModel.ShowNotifications)
-        {
-            _notifyIcon.ShowBalloonTip(
-                2500,
-                "MicLock: Volume Protected",
-                $"Blocked attempt to lower mic volume ({previous}% -> {restored}%).",
-                ToolTipIcon.Info);
-        }
+        if (!_viewModel.ShowNotifications) return;
+
+        _notifyIcon.ShowBalloonTip(
+            2000,
+            "MicLock Active",
+            $"Reverted volume from {previousPercent}% to {restoredPercent}%\n({deviceName})",
+            ToolTipIcon.Info);
     }
 
     private static string TruncateTooltip(string text)
     {
-        // Windows NotifyIcon.Text max limit is 63 characters (or 127 in modern Win32)
-        if (text.Length > 63)
-        {
-            return text.Substring(0, 60) + "...";
-        }
-        return text;
+        return text.Length > 63 ? text[..60] + "..." : text;
     }
 
-    private static Icon LoadIconFromResource(string resourceName, Icon fallback)
+    private static Icon LoadIconFromResource(string iconName, Icon fallbackIcon)
     {
         try
         {
-            var uri = new Uri($"pack://application:,,,/Assets/{resourceName}", UriKind.Absolute);
-            var streamInfo = System.Windows.Application.GetResourceStream(uri);
-            if (streamInfo?.Stream != null)
-            {
-                return new Icon(streamInfo.Stream);
-            }
-        }
-        catch { }
-
-        try
-        {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string localPath = Path.Combine(baseDir, "Assets", resourceName);
-            if (File.Exists(localPath))
+            string iconPath = Path.Combine(baseDir, "Assets", iconName);
+            if (File.Exists(iconPath))
             {
-                return new Icon(localPath);
+                return new Icon(iconPath);
+            }
+
+            string altPath = Path.Combine(baseDir, iconName);
+            if (File.Exists(altPath))
+            {
+                return new Icon(altPath);
             }
         }
         catch { }
 
-        return fallback;
+        return fallbackIcon;
     }
 
     public void Dispose()
     {
+        _wheelHook?.Dispose();
+        _osdBanner.Close();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _lockedIcon.Dispose();
         _unlockedIcon.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Native window subclass to intercept WM_MOUSEWHEEL on the NotifyIcon tray HWND
+    /// </summary>
+    private sealed class TrayWheelHook : NativeWindow, IDisposable
+    {
+        private const int WM_MOUSEWHEEL = 0x020A;
+        private readonly Action<int> _onWheel;
+
+        public TrayWheelHook(NotifyIcon notifyIcon, Action<int> onWheel)
+        {
+            _onWheel = onWheel;
+            try
+            {
+                var windowField = typeof(NotifyIcon).GetField("window", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (windowField?.GetValue(notifyIcon) is NativeWindow nativeWin && nativeWin.Handle != IntPtr.Zero)
+                {
+                    AssignHandle(nativeWin.Handle);
+                }
+            }
+            catch { }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_MOUSEWHEEL)
+            {
+                int delta = (short)((m.WParam.ToInt64() >> 16) & 0xFFFF);
+                _onWheel(delta);
+                m.Result = IntPtr.Zero;
+                return;
+            }
+
+            // In Shell NotifyIcon Version 4 callback: LOWORD(lParam) == WM_MOUSEWHEEL
+            int lParam = (int)(m.LParam.ToInt64() & 0xFFFF);
+            if (lParam == WM_MOUSEWHEEL)
+            {
+                int delta = (short)((m.WParam.ToInt64() >> 16) & 0xFFFF);
+                if (delta == 0)
+                {
+                    delta = (short)((m.LParam.ToInt64() >> 16) & 0xFFFF);
+                }
+                _onWheel(delta != 0 ? delta : 120);
+                m.Result = IntPtr.Zero;
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+
+        public void Dispose()
+        {
+            ReleaseHandle();
+            GC.SuppressFinalize(this);
+        }
     }
 }

@@ -7,7 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using MicLock.Core.Audio;
 using MicLock.Core.Config;
-using MicLock.Core.System;
+using MicLock.Core.Sys;
 
 namespace MicLock.App.ViewModels;
 
@@ -31,9 +31,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<AudioDeviceInfo> AvailableDevices { get; } = new();
     public ObservableCollection<ActivityLogEntry> ActivityLogs { get; } = new();
 
+    public IAudioLockEngine AudioEngine => _audioEngine;
+
     public ICommand SetPresetCommand { get; }
     public ICommand RefreshDevicesCommand { get; }
     public ICommand ClearLogsCommand { get; }
+    public ICommand ToggleMuteCommand { get; }
 
     public MainViewModel(IAudioLockEngine audioEngine, SettingsManager settingsManager, StartupManager startupManager)
     {
@@ -45,6 +48,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         SetPresetCommand = new RelayCommand<string>(ExecuteSetPreset);
         RefreshDevicesCommand = new RelayCommand(_ => RefreshDevices());
         ClearLogsCommand = new RelayCommand(_ => ActivityLogs.Clear());
+        ToggleMuteCommand = new RelayCommand(_ => ToggleMute());
 
         // Load persisted settings
         var settings = _settingsManager.Current;
@@ -56,6 +60,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
         // Wire up audio engine events
         _audioEngine.VolumeChanged += OnAudioEngineVolumeChanged;
+        _audioEngine.MuteChanged += OnAudioEngineMuteChanged;
         _audioEngine.VolumeRestored += OnAudioEngineVolumeRestored;
         _audioEngine.ActiveDeviceChanged += OnAudioEngineActiveDeviceChanged;
         _audioEngine.LogEntryAdded += OnAudioEngineLogEntryAdded;
@@ -144,7 +149,45 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool IsMuted
     {
         get => _isMuted;
-        private set => SetProperty(ref _isMuted, value);
+        set
+        {
+            if (SetProperty(ref _isMuted, value))
+            {
+                _audioEngine.SetMute(value);
+                OnPropertyChanged(nameof(StatusText));
+                OnPropertyChanged(nameof(StatusTooltip));
+            }
+        }
+    }
+
+    public void ToggleMute()
+    {
+        bool newState = _audioEngine.ToggleMute();
+        _isMuted = newState;
+        OnPropertyChanged(nameof(IsMuted));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(StatusTooltip));
+    }
+
+    public void AdjustVolume(int deltaPercent)
+    {
+        int newVol = Math.Clamp(TargetVolumePercent + deltaPercent, 0, 100);
+        TargetVolumePercent = newVol;
+        if (!_isLocked)
+        {
+            _audioEngine.SetVolume(newVol);
+        }
+    }
+
+    private void OnAudioEngineMuteChanged(object? sender, bool muted)
+    {
+        _dispatcher.Invoke(() =>
+        {
+            _isMuted = muted;
+            OnPropertyChanged(nameof(IsMuted));
+            OnPropertyChanged(nameof(StatusText));
+            OnPropertyChanged(nameof(StatusTooltip));
+        });
     }
 
     public bool StartWithWindows
@@ -193,23 +236,23 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetProperty(ref _preventionCount, value);
     }
 
-    public string StatusText => _isLocked ? $"PROTECTED ({_targetVolumePercent}%)" : "LOCK PAUSED";
+    public string StatusText => _isLocked ? "Active" : "Paused";
 
     public System.Windows.Media.Brush StatusBrush => _isLocked
-        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(5, 150, 105)) // Emerald Green
-        : new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)); // Slate Gray
+        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(13, 148, 136)) // Teal 600
+        : new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 163, 184)); // Slate 400
 
     public System.Windows.Media.Brush StatusBackgroundBrush => _isLocked
-        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(236, 253, 245)) // Emerald Mint 50
+        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 253, 250)) // Teal 50
         : new SolidColorBrush(System.Windows.Media.Color.FromRgb(241, 245, 249)); // Slate 100
 
     public System.Windows.Media.Brush StatusForegroundBrush => _isLocked
-        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(6, 95, 70)) // Emerald Dark 800
-        : new SolidColorBrush(System.Windows.Media.Color.FromRgb(71, 85, 105)); // Slate 600
+        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(15, 118, 110)) // Teal 700
+        : new SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 116, 139)); // Slate 500
 
     public System.Windows.Media.Brush StatusBorderBrush => _isLocked
-        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(167, 243, 208)) // Emerald 200
-        : new SolidColorBrush(System.Windows.Media.Color.FromRgb(203, 213, 225)); // Slate 300
+        ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(204, 251, 241)) // Teal 200
+        : new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)); // Slate 200
 
     public string StatusTooltip => _isLocked
         ? $"MicLock: Locked at {_targetVolumePercent}% | {_audioEngine.ActiveDevice?.DisplayName ?? "Default Mic"}"

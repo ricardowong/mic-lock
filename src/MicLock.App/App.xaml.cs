@@ -4,7 +4,8 @@ using MicLock.App.Tray;
 using MicLock.App.ViewModels;
 using MicLock.Core.Audio;
 using MicLock.Core.Config;
-using MicLock.Core.System;
+using MicLock.Core.Sys;
+using MicLock.Core.UI;
 using Application = System.Windows.Application;
 
 namespace MicLock.App;
@@ -12,6 +13,8 @@ namespace MicLock.App;
 public partial class App : Application
 {
     private SingleInstanceManager? _singleInstanceManager;
+    private AppIpcServer? _ipcServer;
+    private GlobalHotkeyManager? _hotkeyManager;
     private TrayIconController? _trayController;
     private MainViewModel? _viewModel;
     private MainWindow? _mainWindow;
@@ -25,26 +28,44 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // 1. Single Instance Check
+        bool isToggleMuteReq = e.Args.Any(a => a.Equals("--toggle-mute", StringComparison.OrdinalIgnoreCase)
+                                            || a.Equals("-m", StringComparison.OrdinalIgnoreCase)
+                                            || a.Equals("/mute", StringComparison.OrdinalIgnoreCase));
+
+        bool forceShow = e.Args.Any(a => a.Equals("--show", StringComparison.OrdinalIgnoreCase)
+                                      || a.Equals("--window", StringComparison.OrdinalIgnoreCase));
+
+        // 1. Single Instance Check & IPC Dispatch
         _singleInstanceManager = new SingleInstanceManager();
         if (!_singleInstanceManager.TryAcquire())
         {
-            System.Windows.MessageBox.Show(
-                "MicLock is already running in the Windows System Tray.",
-                "MicLock",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (isToggleMuteReq)
+            {
+                AppIpcClient.SendCommand("TOGGLE_MUTE");
+            }
+            else if (forceShow)
+            {
+                AppIpcClient.SendCommand("SHOW");
+            }
+            else
+            {
+                AppIpcClient.SendCommand("SHOW");
+            }
 
             Shutdown();
             return;
         }
 
-        // 2. Initialize Core Services
+        // 2. Start IPC Server for subsequent instances (PowerToys / CLI)
+        _ipcServer = new AppIpcServer();
+        _ipcServer.CommandReceived += OnIpcCommandReceived;
+        _ipcServer.Start();
+
+        // 3. Initialize Core Services
         var settingsManager = new SettingsManager();
         var startupManager = new StartupManager();
         var audioEngine = new AudioLockEngine();
 
-        // 3. Sync Startup Registry with Settings
         if (settingsManager.Current.StartWithWindows)
         {
             startupManager.SetStartup(true);
@@ -62,9 +83,23 @@ public partial class App : Application
             _trayController.ShowVolumeRestoredNotification(args.PreviousPercent, args.RestoredPercent, args.DeviceName);
         };
 
-        // 6. Handle Launch Mode (Silent Tray vs Open Window)
-        bool startMinimized = e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
-                              || settingsManager.Current.StartMinimized;
+        // 6. Initialize Global Hotkey (Default: Ctrl+Shift+Alt+M for SoundSwitch / PowerToys compatibility)
+        _hotkeyManager = new GlobalHotkeyManager();
+        _hotkeyManager.HotkeyPressed += () =>
+        {
+            _viewModel.ToggleMute();
+        };
+        _hotkeyManager.Register();
+
+        // 7. Handle Initial Launch Arguments
+        if (isToggleMuteReq)
+        {
+            _viewModel.ToggleMute();
+        }
+
+        bool startMinimized = !forceShow && (isToggleMuteReq
+                              || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
+                              || settingsManager.Current.StartMinimized);
 
         if (!startMinimized)
         {
@@ -72,8 +107,32 @@ public partial class App : Application
         }
     }
 
+    private void OnIpcCommandReceived(string command)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            switch (command.ToUpperInvariant())
+            {
+                case "TOGGLE_MUTE":
+                    _viewModel?.ToggleMute();
+                    break;
+                case "SHOW":
+                    _trayController?.ShowMainWindow();
+                    break;
+                case "VOLUME_UP":
+                    _viewModel?.AdjustVolume(5);
+                    break;
+                case "VOLUME_DOWN":
+                    _viewModel?.AdjustVolume(-5);
+                    break;
+            }
+        });
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        _hotkeyManager?.Dispose();
+        _ipcServer?.Dispose();
         _trayController?.Dispose();
         _viewModel?.Dispose();
         _singleInstanceManager?.Dispose();

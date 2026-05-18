@@ -22,6 +22,10 @@
 
   <ItemGroup>
     <Resource Include="..\MicLock.App\Assets\*.ico" />
+    <Content Include="..\MicLock.App\Assets\*.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\%(Filename)%(Extension)</Link>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -24,6 +24,18 @@ public partial class OsdBannerWindow : Window
     private readonly SolidColorBrush _tealBrush = new((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#06B6D4"));
     private readonly SolidColorBrush _mutedBrush = new((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#94A3B8"));
 
+    private const double StandardWidth = 290.0;
+    private const double StandardHeight = 84.0;
+    private const double CompactWidth = 175.0;
+    private const double CompactHeight = 48.0;
+
+    private bool _isCompactMode;
+    private string? _lastDeviceName;
+
+    public bool KeepOverlayWhenMuted { get; set; } = false;
+    public double OverlayOpacityWhenMuted { get; set; } = 0.70;
+    public bool IsCurrentlyMuted { get; private set; }
+
     public OsdBannerWindow()
     {
         InitializeComponent();
@@ -32,83 +44,222 @@ public partial class OsdBannerWindow : Window
         {
             Interval = TimeSpan.FromMilliseconds(2400)
         };
-        _hideTimer.Tick += (s, e) =>
-        {
-            _hideTimer.Stop();
-            FadeOut();
-        };
+        _hideTimer.Tick += OnHideTimerTick;
 
         Loaded += OnLoaded;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Apply Win32 non-activating click-through transparent styles
-        var hwnd = new WindowInteropHelper(this).Handle;
-        int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT);
-
+        ApplyClickThrough();
         Reposition();
+    }
+
+    public void ApplyClickThrough()
+    {
+        try
+        {
+            var helper = new WindowInteropHelper(this);
+            if (helper.Handle != IntPtr.Zero)
+            {
+                int exStyle = GetWindowLong(helper.Handle, GWL_EXSTYLE);
+                SetWindowLong(helper.Handle, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT);
+            }
+        }
+        catch { }
     }
 
     public void Reposition()
     {
-        var workArea = SystemParameters.WorkArea;
-        Left = workArea.Right - Width - 20;
-        Top = workArea.Bottom - Height - 20;
+        try
+        {
+            var workArea = SystemParameters.WorkArea;
+            double w = double.IsNaN(Width) || Width <= 0 ? StandardWidth : Width;
+            double h = double.IsNaN(Height) || Height <= 0 ? StandardHeight : Height;
+            Left = workArea.Right - w - 20;
+            Top = workArea.Bottom - h - 20;
+        }
+        catch { }
+    }
+
+    public void UpdateSettings(bool keepWhenMuted, double opacity)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => UpdateSettings(keepWhenMuted, opacity));
+            return;
+        }
+
+        KeepOverlayWhenMuted = keepWhenMuted;
+        OverlayOpacityWhenMuted = Math.Clamp(opacity, 0.10, 1.0);
+
+        if (IsCurrentlyMuted)
+        {
+            if (KeepOverlayWhenMuted)
+            {
+                _hideTimer.Stop();
+                ApplyCompactBadgeMode(true);
+                Opacity = OverlayOpacityWhenMuted;
+                if (!IsVisible)
+                {
+                    try { Show(); } catch { }
+                    ApplyClickThrough();
+                }
+                Reposition();
+            }
+            else
+            {
+                FadeOut();
+            }
+        }
     }
 
     public void ShowMuteState(bool isMuted, string? deviceName)
     {
-        Dispatcher.Invoke(() =>
+        if (!Dispatcher.CheckAccess())
         {
-            Reposition();
+            Dispatcher.Invoke(() => ShowMuteState(isMuted, deviceName));
+            return;
+        }
 
-            TitleText.Text = isMuted ? "Microphone Off" : "Microphone On";
-            SubtitleText.Text = string.IsNullOrWhiteSpace(deviceName) ? "Microphone" : deviceName;
+        IsCurrentlyMuted = isMuted;
+        if (!string.IsNullOrWhiteSpace(deviceName))
+        {
+            _lastDeviceName = deviceName;
+        }
 
-            if (isMuted)
+        if (isMuted)
+        {
+            MicBodyPath.Fill = _mutedBrush;
+            MuteSlash.Visibility = Visibility.Visible;
+            TitleText.Text = "Microphone Off";
+            SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
+
+            if (KeepOverlayWhenMuted)
             {
-                MicBodyPath.Fill = _mutedBrush;
-                MuteSlash.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                MicBodyPath.Fill = _tealBrush;
-                MuteSlash.Visibility = Visibility.Collapsed;
-            }
+                _hideTimer.Stop();
+                ApplyCompactBadgeMode(true);
+                Opacity = OverlayOpacityWhenMuted;
 
-            DisplayBanner();
-        });
+                if (!IsVisible)
+                {
+                    try { Show(); } catch { }
+                    ApplyClickThrough();
+                }
+                Reposition();
+                return;
+            }
+        }
+        else
+        {
+            MicBodyPath.Fill = _tealBrush;
+            MuteSlash.Visibility = Visibility.Collapsed;
+            TitleText.Text = "Microphone On";
+            SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
+        }
+
+        ApplyCompactBadgeMode(false);
+        DisplayBannerTimed();
     }
 
     public void ShowVolumeLevel(int volumePercent, string? deviceName)
     {
-        Dispatcher.Invoke(() =>
+        if (!Dispatcher.CheckAccess())
         {
-            Reposition();
+            Dispatcher.Invoke(() => ShowVolumeLevel(volumePercent, deviceName));
+            return;
+        }
 
-            TitleText.Text = $"Microphone {volumePercent}%";
-            SubtitleText.Text = string.IsNullOrWhiteSpace(deviceName) ? "Microphone" : deviceName;
+        if (!string.IsNullOrWhiteSpace(deviceName))
+        {
+            _lastDeviceName = deviceName;
+        }
 
-            MicBodyPath.Fill = _tealBrush;
-            MuteSlash.Visibility = Visibility.Collapsed;
+        ApplyCompactBadgeMode(false);
+        TitleText.Text = $"Microphone {volumePercent}%";
+        SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
 
-            DisplayBanner();
-        });
+        MicBodyPath.Fill = _tealBrush;
+        MuteSlash.Visibility = Visibility.Collapsed;
+
+        DisplayBannerTimed();
     }
 
-    private void DisplayBanner()
+    public void ShowDeviceSwitched(string deviceName, bool isMuted)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => ShowDeviceSwitched(deviceName, isMuted));
+            return;
+        }
+
+        IsCurrentlyMuted = isMuted;
+        _lastDeviceName = deviceName;
+
+        ApplyCompactBadgeMode(false);
+        TitleText.Text = isMuted ? "Microphone Off" : "Active Microphone";
+        SubtitleText.Text = deviceName;
+
+        if (isMuted)
+        {
+            MicBodyPath.Fill = _mutedBrush;
+            MuteSlash.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MicBodyPath.Fill = _tealBrush;
+            MuteSlash.Visibility = Visibility.Collapsed;
+        }
+
+        DisplayBannerTimed();
+    }
+
+    private void ApplyCompactBadgeMode(bool compact)
+    {
+        _isCompactMode = compact;
+        if (compact)
+        {
+            Width = CompactWidth;
+            Height = CompactHeight;
+            CardBorder.Padding = new Thickness(10, 6, 10, 6);
+            CardBorder.CornerRadius = new CornerRadius(6);
+            IconContainer.Width = 22;
+            IconContainer.Height = 22;
+            IconContainer.Margin = new Thickness(0, 0, 8, 0);
+            MicBodyPath.Width = 18;
+            MicBodyPath.Height = 18;
+            TitleText.FontSize = 13;
+            SubtitleText.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            Width = StandardWidth;
+            Height = StandardHeight;
+            CardBorder.Padding = new Thickness(16, 12, 16, 12);
+            CardBorder.CornerRadius = new CornerRadius(8);
+            IconContainer.Width = 32;
+            IconContainer.Height = 32;
+            IconContainer.Margin = new Thickness(0, 0, 14, 0);
+            MicBodyPath.Width = 22;
+            MicBodyPath.Height = 22;
+            TitleText.FontSize = 16;
+            SubtitleText.Visibility = Visibility.Visible;
+        }
+
+        Reposition();
+    }
+
+    private void DisplayBannerTimed()
     {
         _hideTimer.Stop();
 
         if (!IsVisible)
         {
             Opacity = 0;
-            Show();
+            try { Show(); } catch { }
+            ApplyClickThrough();
         }
 
-        // Animate Slide up and Fade In
         var fadeIn = new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(130))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
@@ -124,6 +275,30 @@ public partial class OsdBannerWindow : Window
         _hideTimer.Start();
     }
 
+    private void OnHideTimerTick(object? sender, EventArgs e)
+    {
+        _hideTimer.Stop();
+
+        if (IsCurrentlyMuted && KeepOverlayWhenMuted)
+        {
+            ApplyCompactBadgeMode(true);
+            TitleText.Text = "Microphone Off";
+            MicBodyPath.Fill = _mutedBrush;
+            MuteSlash.Visibility = Visibility.Visible;
+
+            var fadeToBadge = new DoubleAnimation(OverlayOpacityWhenMuted, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+            };
+            BeginAnimation(OpacityProperty, fadeToBadge);
+            Reposition();
+        }
+        else
+        {
+            FadeOut();
+        }
+    }
+
     private void FadeOut()
     {
         var fadeOut = new DoubleAnimation(0.0, TimeSpan.FromMilliseconds(220))
@@ -135,7 +310,7 @@ public partial class OsdBannerWindow : Window
         {
             if (Opacity == 0.0)
             {
-                Hide();
+                try { Hide(); } catch { }
             }
         };
 

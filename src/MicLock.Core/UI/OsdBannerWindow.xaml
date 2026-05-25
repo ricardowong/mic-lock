@@ -19,12 +19,13 @@
         </Grid.RenderTransform>
 
         <!-- SoundSwitch-Style Floating Dark Card -->
-        <Border Background="#111827"
+        <Border x:Name="CardBorder"
+                Background="#111827"
                 BorderBrush="#1F2937"
                 BorderThickness="1"
                 CornerRadius="8"
                 Padding="16,12"
-                Margin="8">
+                Margin="6">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.45" Color="#000000"/>
             </Border.Effect>
@@ -36,7 +37,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Microphone Icon Glyph -->
-                <Grid Grid.Column="0" Width="32" Height="32" Margin="0,0,14,0" VerticalAlignment="Center">
+                <Grid x:Name="IconContainer" Grid.Column="0" Width="32" Height="32" Margin="0,0,14,0" VerticalAlignment="Center">
                     <!-- Base Microphone Path -->
                     <Path x:Name="MicBodyPath"
                           Data="M12,2 A4,4 0 0,0 8,6 L8,12 A4,4 0 0,0 16,12 L16,6 A4,4 0 0,0 12,2 M5,10 L5,12 A7,7 0 0,0 11,18.92 L11,21 L8,21 A1,1 0 0,0 8,23 L16,23 A1,1 0 0,0 16,21 L13,21 L13,18.92 A7,7 0 0,0 19,12 L19,10 A1,1 0 0,0 17,10 L17,12 A5,5 0 0,1 7,12 L7,10 A1,1 0 0,0 5,10 Z"

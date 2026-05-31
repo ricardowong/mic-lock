@@ -1,9 +1,9 @@
-; MicLock Inno Setup 6 Script
+; MicAnchor Inno Setup 6 Script
 ; Builds a zero-elevation, lightweight Windows installer
 
-#define MyAppName "MicLock"
+#define MyAppName "MicAnchor"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "MicLock Open Source"
+#define MyAppPublisher "MicAnchor Open Source"
 #define MyAppURL "https://github.com/developer/mic-lock"
 #define MyAppExeName "MicLock.exe"
 

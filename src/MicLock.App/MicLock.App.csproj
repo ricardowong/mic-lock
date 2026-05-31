@@ -13,15 +13,18 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>MicLock</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <AssemblyTitle>MicLock</AssemblyTitle>
-    <Product>MicLock</Product>
-    <Description>Windows Microphone Volume Lock System Tray Utility</Description>
+    <AssemblyTitle>MicAnchor</AssemblyTitle>
+    <Product>MicAnchor</Product>
+    <Description>MicAnchor - Windows Microphone Volume Lock and Hotkey Remap Utility</Description>
     <Version>1.0.0</Version>
-    <Company>MicLock Open Source Project</Company>
+    <Company>MicAnchor Open Source Project</Company>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="Assets\*.ico" />
+    <None Update="Assets\*.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

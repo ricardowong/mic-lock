@@ -32,6 +32,10 @@ public partial class App : Application
                                             || a.Equals("-m", StringComparison.OrdinalIgnoreCase)
                                             || a.Equals("/mute", StringComparison.OrdinalIgnoreCase));
 
+        bool isCycleDeviceReq = e.Args.Any(a => a.Equals("--cycle-device", StringComparison.OrdinalIgnoreCase)
+                                             || a.Equals("--cycle-mic", StringComparison.OrdinalIgnoreCase)
+                                             || a.Equals("-c", StringComparison.OrdinalIgnoreCase));
+
         bool forceShow = e.Args.Any(a => a.Equals("--show", StringComparison.OrdinalIgnoreCase)
                                       || a.Equals("--window", StringComparison.OrdinalIgnoreCase));
 
@@ -42,6 +46,10 @@ public partial class App : Application
             if (isToggleMuteReq)
             {
                 AppIpcClient.SendCommand("TOGGLE_MUTE");
+            }
+            else if (isCycleDeviceReq)
+            {
+                AppIpcClient.SendCommand("CYCLE_DEVICE");
             }
             else if (forceShow)
             {
@@ -96,8 +104,13 @@ public partial class App : Application
         {
             _viewModel.ToggleMute();
         }
+        else if (isCycleDeviceReq)
+        {
+            _viewModel.CycleRecordingDevice();
+        }
 
         bool startMinimized = !forceShow && (isToggleMuteReq
+                              || isCycleDeviceReq
                               || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
                               || settingsManager.Current.StartMinimized);
 
@@ -115,6 +128,17 @@ public partial class App : Application
             {
                 case "TOGGLE_MUTE":
                     _viewModel?.ToggleMute();
+                    break;
+                case "CYCLE_DEVICE":
+                case "CYCLE_MIC":
+                    _viewModel?.CycleRecordingDevice();
+                    break;
+                case "LOCK_VOLUME":
+                    if (_viewModel != null)
+                    {
+                        _viewModel.IsLocked = true;
+                        _viewModel.AudioEngine.SetVolume(_viewModel.TargetVolumePercent);
+                    }
                     break;
                 case "SHOW":
                     _trayController?.ShowMainWindow();

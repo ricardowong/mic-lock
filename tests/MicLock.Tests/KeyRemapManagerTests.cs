@@ -6,8 +6,8 @@ namespace MicLock.Tests;
 public class KeyRemapManagerTests
 {
     [Theory]
-    [InlineData(0x83u, "F20")]
-    [InlineData(0xADu, "VK_VOLUME_MUTE")]
+    [InlineData(0x83u, "Dedicated Mic Key")]
+    [InlineData(0xADu, "Mute Key")]
     [InlineData(0x13u, "Pause")]
     [InlineData(0x91u, "Scroll Lock")]
     [InlineData(0x7Cu, "F13")]
@@ -31,7 +31,7 @@ public class KeyRemapManagerTests
         Assert.Equal("Ctrl+Shift+Alt+M", combo1);
 
         string combo2 = KeyRemapManager.FormatKeyCombination(0x83, ctrl: false, alt: false, shift: false, win: false);
-        Assert.Equal("F20", combo2);
+        Assert.Equal("Dedicated Mic Key", combo2);
 
         string combo3 = KeyRemapManager.FormatKeyCombination(0x44, ctrl: true, alt: true, shift: true, win: false);
         Assert.Equal("Ctrl+Shift+Alt+D", combo3);
@@ -44,6 +44,14 @@ public class KeyRemapManagerTests
 
         string combo6 = KeyRemapManager.FormatKeyCombination(0, ctrl: false, alt: false, shift: false, win: false);
         Assert.Equal("None", combo6);
+
+        // Win+C combination for Keychron
+        string combo7 = KeyRemapManager.FormatKeyCombination(0x43, ctrl: false, alt: false, shift: false, win: true);
+        Assert.Equal("Win+C", combo7);
+
+        // Ctrl+Alt+M combination for PowerToys
+        string combo8 = KeyRemapManager.FormatKeyCombination(0x4D, ctrl: true, alt: true, shift: false, win: false);
+        Assert.Equal("Ctrl+Alt+M", combo8);
     }
 
     [Theory]
@@ -55,13 +63,29 @@ public class KeyRemapManagerTests
     [InlineData(0xA0u, true)]  // LShift
     [InlineData(0xA2u, true)]  // LCtrl
     [InlineData(0xA4u, true)]  // LAlt
-    [InlineData(0x83u, false)] // F20 (Dedicated Mic Key)
-    [InlineData(0xADu, false)] // VK_VOLUME_MUTE
+    [InlineData(0x83u, false)] // Dedicated Mic Key
+    [InlineData(0xADu, false)] // Mute Key
     [InlineData(0x13u, false)] // Pause
     [InlineData(0x4Du, false)] // M
     public void IsModifierKey_IdentifiesModifiersAccurately(uint vk, bool expected)
     {
         bool actual = KeyRemapManager.IsModifierKey(vk);
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(0x4Du, true)]  // 'M'
+    [InlineData(0x43u, true)]  // 'C'
+    [InlineData(0x30u, true)]  // '0'
+    [InlineData(0x39u, true)]  // '9'
+    [InlineData(0x20u, true)]  // Space
+    [InlineData(0x83u, false)] // Dedicated Mic Key (F20)
+    [InlineData(0xADu, false)] // Mute Key
+    [InlineData(0x13u, false)] // Pause
+    [InlineData(0x7Cu, false)] // F13
+    public void IsTypingKey_DistinguishesLettersFromDedicatedSpecialKeys(uint vk, bool expected)
+    {
+        bool actual = KeyRemapManager.IsTypingKey(vk);
         Assert.Equal(expected, actual);
     }
 
@@ -91,13 +115,13 @@ public class KeyRemapManagerTests
         var newRule = new KeyBindingRule
         {
             Action = KeyRemapAction.ToggleMute,
-            VirtualKey = 0x83, // F20
+            VirtualKey = 0x83, // Dedicated Mic Key
             ModifiersCtrl = false,
             ModifiersAlt = false,
             ModifiersShift = false,
             ModifiersWin = false,
             SuppressOriginalKey = true,
-            DisplayText = "F20"
+            DisplayText = "Dedicated Mic Key"
         };
 
         manager.UpdateBinding(newRule);
@@ -105,6 +129,6 @@ public class KeyRemapManagerTests
 
         Assert.NotNull(retrieved);
         Assert.Equal(0x83u, retrieved.VirtualKey);
-        Assert.Equal("F20", retrieved.DisplayText);
+        Assert.Equal("Dedicated Mic Key", retrieved.DisplayText);
     }
 }

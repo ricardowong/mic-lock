@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
 using MicLock.Core.UI;
+using MicLock.Core.Sys;
 using MicLock.App.ViewModels;
 using Application = System.Windows.Application;
 
@@ -32,10 +33,20 @@ public class TrayIconController : IDisposable
     {
         _viewModel = viewModel;
         _mainWindow = mainWindow;
-        _osdBanner = new OsdBannerWindow();
+        _osdBanner = new OsdBannerWindow
+        {
+            KeepOverlayWhenMuted = _viewModel.KeepOverlayWhenMuted,
+            OverlayOpacityWhenMuted = _viewModel.OverlayOpacityPercent / 100.0
+        };
+
+        // If starting muted with persistent overlay requested, show it immediately
+        if (_viewModel.IsMuted && _viewModel.KeepOverlayWhenMuted)
+        {
+            _osdBanner.ShowMuteState(true, _viewModel.SelectedDevice?.Name);
+        }
 
         // Load tray icons from embedded WPF resources or fallback to disk
-        _lockedIcon = LoadIconFromResource("mic-locked.ico", SystemIcons.Shield);
+        _lockedIcon = LoadIconFromResource("mic-locked.ico", SystemIcons.Application);
         _unlockedIcon = LoadIconFromResource("mic-unlocked.ico", SystemIcons.Application);
 
         var contextMenu = new ContextMenuStrip
@@ -56,6 +67,12 @@ public class TrayIconController : IDisposable
             Checked = _viewModel.IsMuted
         };
         _muteToggleItem.Click += (s, e) => _viewModel.ToggleMute();
+
+        var cycleDeviceItem = new ToolStripMenuItem("Cycle Microphone")
+        {
+            Font = contextMenu.Font
+        };
+        cycleDeviceItem.Click += (s, e) => _viewModel.CycleRecordingDevice();
 
         _lockToggleItem = new ToolStripMenuItem("Lock Volume")
         {
@@ -88,7 +105,7 @@ public class TrayIconController : IDisposable
         };
         _startupItem.Click += (s, e) => _viewModel.StartWithWindows = _startupItem.Checked;
 
-        _exitItem = new ToolStripMenuItem("Exit MicLock");
+        _exitItem = new ToolStripMenuItem("Exit MicAnchor");
         _exitItem.Click += (s, e) =>
         {
             if (_notifyIcon != null)
@@ -98,13 +115,51 @@ public class TrayIconController : IDisposable
             Application.Current?.Shutdown();
         };
 
+        var updatesItem = new ToolStripMenuItem("Check for Updates...");
+        updatesItem.Click += async (s, e) =>
+        {
+            var checker = new GitHubUpdateChecker();
+            var res = await checker.CheckForUpdatesAsync("1.0.0");
+            if (res.IsUpdateAvailable)
+            {
+                var choice = System.Windows.Forms.MessageBox.Show(
+                    $"A new version of MicAnchor is available!\n\nLatest: v{res.LatestVersion} (Current: v{res.CurrentVersion})\n\n{res.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
+                    "MicAnchor Update Available",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (choice == DialogResult.Yes)
+                {
+                    GitHubUpdateChecker.OpenReleaseUrl(res.HtmlUrl);
+                }
+            }
+            else if (res.Success)
+            {
+                System.Windows.Forms.MessageBox.Show(
+                    $"You are using the latest version of MicAnchor (v{res.CurrentVersion}).",
+                    "MicAnchor Up to Date",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                System.Windows.Forms.MessageBox.Show(
+                    $"Could not connect to GitHub to check for updates: {res.ErrorMessage}",
+                    "Check for Updates",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        };
+
         contextMenu.Items.Add(_openItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(_muteToggleItem);
+        contextMenu.Items.Add(cycleDeviceItem);
         contextMenu.Items.Add(_lockToggleItem);
         contextMenu.Items.Add(_targetMenu);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(_startupItem);
+        contextMenu.Items.Add(updatesItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(_exitItem);
 
@@ -141,6 +196,30 @@ public class TrayIconController : IDisposable
                 _muteToggleItem.Checked = muted;
                 _muteToggleItem.Text = muted ? "Unmute Microphone" : "Mute Microphone";
                 _osdBanner.ShowMuteState(muted, _viewModel.SelectedDevice?.Name);
+            });
+        };
+
+        _viewModel.DeviceSwitched += (s, device) =>
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                _osdBanner.ShowDeviceSwitched(device.Name, _viewModel.IsMuted);
+            });
+        };
+
+        _viewModel.VolumeLockEnforced += (s, percent) =>
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                _osdBanner.ShowVolumeLevel(percent, _viewModel.SelectedDevice?.Name);
+            });
+        };
+
+        _viewModel.OverlaySettingsChanged += (s, e) =>
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                _osdBanner.UpdateSettings(_viewModel.KeepOverlayWhenMuted, _viewModel.OverlayOpacityPercent / 100.0);
             });
         };
 
@@ -224,7 +303,7 @@ public class TrayIconController : IDisposable
 
         _notifyIcon.ShowBalloonTip(
             2000,
-            "MicLock Active",
+            "MicAnchor Active",
             $"Reverted volume from {previousPercent}% to {restoredPercent}%\n({deviceName})",
             ToolTipIcon.Info);
     }
@@ -236,6 +315,17 @@ public class TrayIconController : IDisposable
 
     private static Icon LoadIconFromResource(string iconName, Icon fallbackIcon)
     {
+        try
+        {
+            var uri = new Uri($"pack://application:,,,/MicLock;component/Assets/{iconName}", UriKind.Absolute);
+            var streamInfo = Application.GetResourceStream(uri);
+            if (streamInfo?.Stream != null)
+            {
+                return new Icon(streamInfo.Stream);
+            }
+        }
+        catch { }
+
         try
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;

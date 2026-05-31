@@ -11,11 +11,34 @@ using MicLock.Core.Sys;
 
 namespace MicLock.App.ViewModels;
 
+public class KeyRemapActionItem
+{
+    public KeyRemapAction Action { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+
+    public override string ToString() => DisplayName;
+}
+
+public class RemapPresetItem
+{
+    public string DisplayName { get; set; } = string.Empty;
+    public uint VirtualKey { get; set; }
+    public bool ModifiersCtrl { get; set; }
+    public bool ModifiersAlt { get; set; }
+    public bool ModifiersShift { get; set; }
+    public bool ModifiersWin { get; set; }
+    public string ComboText { get; set; } = string.Empty;
+
+    public override string ToString() => DisplayName;
+}
+
 public class MainViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IAudioLockEngine _audioEngine;
     private readonly SettingsManager _settingsManager;
     private readonly StartupManager _startupManager;
+    private readonly KeyRemapManager _keyRemapManager;
     private readonly Dispatcher _dispatcher;
 
     private AudioDeviceInfo? _selectedDevice;
@@ -28,27 +51,79 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _showNotifications;
     private int _preventionCount;
 
+    // SoundSwitch parity settings
+    private bool _keepOverlayWhenMuted;
+    private double _overlayOpacityWhenMuted;
+
+    // Key remap UI state
+    private KeyRemapActionItem _selectedRemapAction;
+    private string _currentRemapBindingText = "None";
+    private bool _isRecordingKey;
+    private RemapPresetItem? _selectedPreset;
+
     public ObservableCollection<AudioDeviceInfo> AvailableDevices { get; } = new();
     public ObservableCollection<ActivityLogEntry> ActivityLogs { get; } = new();
+    public IReadOnlyList<KeyRemapActionItem> RemapActions { get; }
+    public IReadOnlyList<RemapPresetItem> RemapPresets { get; }
 
     public IAudioLockEngine AudioEngine => _audioEngine;
+    public KeyRemapManager KeyRemapManager => _keyRemapManager;
 
     public ICommand SetPresetCommand { get; }
     public ICommand RefreshDevicesCommand { get; }
     public ICommand ClearLogsCommand { get; }
     public ICommand ToggleMuteCommand { get; }
+    public ICommand CycleRecordingDeviceCommand { get; }
+    public ICommand StartRecordKeyCommand { get; }
+    public ICommand CancelRecordKeyCommand { get; }
+    public ICommand ClearKeyBindingCommand { get; }
 
-    public MainViewModel(IAudioLockEngine audioEngine, SettingsManager settingsManager, StartupManager startupManager)
+    public event EventHandler<AudioDeviceInfo>? DeviceSwitched;
+    public event EventHandler<int>? VolumeLockEnforced;
+    public event EventHandler? OverlaySettingsChanged;
+
+    public MainViewModel(IAudioLockEngine audioEngine, SettingsManager settingsManager, StartupManager startupManager, KeyRemapManager? keyRemapManager = null)
     {
         _audioEngine = audioEngine;
         _settingsManager = settingsManager;
         _startupManager = startupManager;
         _dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
 
+        RemapActions = new List<KeyRemapActionItem>
+        {
+            new KeyRemapActionItem { Action = KeyRemapAction.ToggleMute, DisplayName = "Toggle Mute", Description = "Press to toggle microphone mute on and off" },
+            new KeyRemapActionItem { Action = KeyRemapAction.PushToTalk, DisplayName = "Push-to-Talk", Description = "Hold to unmute microphone, release to mute" },
+            new KeyRemapActionItem { Action = KeyRemapAction.PushToMute, DisplayName = "Push-to-Mute", Description = "Hold to mute microphone (cough button), release to unmute" },
+            new KeyRemapActionItem { Action = KeyRemapAction.CycleRecordingDevice, DisplayName = "Switch / Cycle Recording Device", Description = "Cycle to the next active microphone and set as Windows default" },
+            new KeyRemapActionItem { Action = KeyRemapAction.LockVolume, DisplayName = "Lock Volume to Target %", Description = "Instantly restore and enforce the target volume level" }
+        };
+
+        RemapPresets = new List<RemapPresetItem>
+        {
+            new RemapPresetItem { DisplayName = "Select a Preset...", VirtualKey = 0 },
+            new RemapPresetItem { DisplayName = "Keychron Mic Key (Win+C)", VirtualKey = 0x43, ModifiersWin = true, ComboText = "Win+C" },
+            new RemapPresetItem { DisplayName = "PowerToys Remap (Ctrl+Alt+M)", VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ComboText = "Ctrl+Alt+M" },
+            new RemapPresetItem { DisplayName = "Dedicated Hardware Mic Key", VirtualKey = 0x83, ComboText = "Dedicated Mic Key" },
+            new RemapPresetItem { DisplayName = "Standard Mute Shortcut (Ctrl+Shift+Alt+M)", VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+M" },
+            new RemapPresetItem { DisplayName = "Cycle Microphone Shortcut (Ctrl+Shift+Alt+D)", VirtualKey = 0x44, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+D" },
+            new RemapPresetItem { DisplayName = "Keyboard Mute Key", VirtualKey = 0xAD, ComboText = "Mute Key" },
+            new RemapPresetItem { DisplayName = "Pause / Break Key", VirtualKey = 0x13, ComboText = "Pause" },
+            new RemapPresetItem { DisplayName = "Scroll Lock Key", VirtualKey = 0x91, ComboText = "Scroll Lock" },
+            new RemapPresetItem { DisplayName = "Ctrl+Shift+Space", VirtualKey = 0x20, ModifiersCtrl = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Space" },
+            new RemapPresetItem { DisplayName = "Alt+` (Backquote)", VirtualKey = 0xC0, ModifiersAlt = true, ComboText = "Alt+`" }
+        };
+
+        _selectedRemapAction = RemapActions[0];
+
         SetPresetCommand = new RelayCommand<string>(ExecuteSetPreset);
         RefreshDevicesCommand = new RelayCommand(_ => RefreshDevices());
         ClearLogsCommand = new RelayCommand(_ => ActivityLogs.Clear());
         ToggleMuteCommand = new RelayCommand(_ => ToggleMute());
+        CycleRecordingDeviceCommand = new RelayCommand(_ => CycleRecordingDevice());
+        StartRecordKeyCommand = new RelayCommand(_ => StartRecordingKey());
+        CancelRecordKeyCommand = new RelayCommand(_ => CancelRecordingKey());
+        ClearKeyBindingCommand = new RelayCommand(_ => ClearBinding());
+        CheckForUpdatesCommand = new RelayCommand(async _ => await CheckForUpdatesAsync());
 
         // Load persisted settings
         var settings = _settingsManager.Current;
@@ -57,6 +132,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _startWithWindows = settings.StartWithWindows;
         _startMinimized = settings.StartMinimized;
         _showNotifications = settings.ShowNotifications;
+        _keepOverlayWhenMuted = settings.KeepOverlayWhenMuted;
+        _overlayOpacityWhenMuted = settings.OverlayOpacityWhenMuted;
+
+        // Initialize Keyboard Remapping Engine
+        _keyRemapManager = keyRemapManager ?? new KeyRemapManager(settings.KeyBindings);
+        _keyRemapManager.IsRemapEnabled = settings.IsKeyRemapEnabled;
+        _keyRemapManager.ActionTriggered += OnRemapActionTriggered;
+        _keyRemapManager.RecordingStarted += () => _dispatcher.Invoke(() => IsRecordingKey = true);
+        _keyRemapManager.RecordingEnded += () => _dispatcher.Invoke(() => IsRecordingKey = false);
+
+        UpdateRemapDisplayForCurrentAction();
 
         // Wire up audio engine events
         _audioEngine.VolumeChanged += OnAudioEngineVolumeChanged;
@@ -160,6 +246,398 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public bool KeepOverlayWhenMuted
+    {
+        get => _keepOverlayWhenMuted;
+        set
+        {
+            if (SetProperty(ref _keepOverlayWhenMuted, value))
+            {
+                _settingsManager.Current.KeepOverlayWhenMuted = value;
+                _settingsManager.Save();
+                OverlaySettingsChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public int OverlayOpacityPercent
+    {
+        get => (int)Math.Round(_overlayOpacityWhenMuted * 100);
+        set
+        {
+            int clamped = Math.Clamp(value, 10, 100);
+            double dec = clamped / 100.0;
+            if (SetProperty(ref _overlayOpacityWhenMuted, dec))
+            {
+                _settingsManager.Current.OverlayOpacityWhenMuted = dec;
+                _settingsManager.Save();
+                OnPropertyChanged(nameof(OverlayOpacityPercent));
+                OverlaySettingsChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public bool IsKeyRemapEnabled
+    {
+        get => _keyRemapManager.IsRemapEnabled;
+        set
+        {
+            if (_keyRemapManager.IsRemapEnabled != value)
+            {
+                _keyRemapManager.IsRemapEnabled = value;
+                _settingsManager.Current.IsKeyRemapEnabled = value;
+                _settingsManager.Save();
+                OnPropertyChanged(nameof(IsKeyRemapEnabled));
+            }
+        }
+    }
+
+    public KeyRemapActionItem SelectedRemapAction
+    {
+        get => _selectedRemapAction;
+        set
+        {
+            if (SetProperty(ref _selectedRemapAction, value))
+            {
+                UpdateRemapDisplayForCurrentAction();
+            }
+        }
+    }
+
+    public string CurrentRemapBindingText
+    {
+        get => _currentRemapBindingText;
+        private set => SetProperty(ref _currentRemapBindingText, value);
+    }
+
+    public bool IsRecordingKey
+    {
+        get => _isRecordingKey;
+        private set
+        {
+            if (SetProperty(ref _isRecordingKey, value))
+            {
+                OnPropertyChanged(nameof(RecordButtonText));
+            }
+        }
+    }
+
+    public string RecordButtonText => _isRecordingKey ? "Recording... (Press key or Esc)" : "Record Key";
+
+    public RemapPresetItem? SelectedPreset
+    {
+        get => _selectedPreset;
+        set
+        {
+            if (SetProperty(ref _selectedPreset, value))
+            {
+                if (value != null && value.VirtualKey != 0)
+                {
+                    ApplyPreset(value);
+                }
+            }
+        }
+    }
+
+    public void StartRecordingKey()
+    {
+        IsRecordingKey = true;
+        _keyRemapManager.StartRecording(
+            onKeyRecorded: rule =>
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    rule.Action = SelectedRemapAction.Action;
+                    _keyRemapManager.UpdateBinding(rule);
+
+                    var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
+                    if (settingRule != null)
+                    {
+                        settingRule.VirtualKey = rule.VirtualKey;
+                        settingRule.ModifiersCtrl = rule.ModifiersCtrl;
+                        settingRule.ModifiersAlt = rule.ModifiersAlt;
+                        settingRule.ModifiersShift = rule.ModifiersShift;
+                        settingRule.ModifiersWin = rule.ModifiersWin;
+                        settingRule.SuppressOriginalKey = rule.SuppressOriginalKey;
+                        settingRule.DisplayText = rule.DisplayText;
+                    }
+                    else
+                    {
+                        _settingsManager.Current.KeyBindings.Add(rule.Clone());
+                    }
+                    _settingsManager.Save();
+
+                    CurrentRemapBindingText = rule.DisplayText;
+                    IsRecordingKey = false;
+                });
+            },
+            onCancelled: () =>
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    IsRecordingKey = false;
+                });
+            });
+    }
+
+    public void CancelRecordingKey()
+    {
+        _keyRemapManager.CancelRecording();
+        IsRecordingKey = false;
+    }
+
+    public void ClearBinding()
+    {
+        var rule = new KeyBindingRule
+        {
+            Action = SelectedRemapAction.Action,
+            VirtualKey = 0,
+            ModifiersCtrl = false,
+            ModifiersAlt = false,
+            ModifiersShift = false,
+            ModifiersWin = false,
+            SuppressOriginalKey = true,
+            DisplayText = "None"
+        };
+
+        _keyRemapManager.UpdateBinding(rule);
+
+        var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
+        if (settingRule != null)
+        {
+            settingRule.VirtualKey = 0;
+            settingRule.ModifiersCtrl = false;
+            settingRule.ModifiersAlt = false;
+            settingRule.ModifiersShift = false;
+            settingRule.ModifiersWin = false;
+            settingRule.DisplayText = "None";
+        }
+        _settingsManager.Save();
+
+        CurrentRemapBindingText = "None";
+    }
+
+    public void ApplyPreset(RemapPresetItem? preset)
+    {
+        if (preset == null || preset.VirtualKey == 0) return;
+
+        var rule = new KeyBindingRule
+        {
+            Action = SelectedRemapAction.Action,
+            VirtualKey = preset.VirtualKey,
+            ModifiersCtrl = preset.ModifiersCtrl,
+            ModifiersAlt = preset.ModifiersAlt,
+            ModifiersShift = preset.ModifiersShift,
+            ModifiersWin = preset.ModifiersWin,
+            SuppressOriginalKey = true,
+            DisplayText = preset.ComboText
+        };
+
+        _keyRemapManager.UpdateBinding(rule);
+
+        var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
+        if (settingRule != null)
+        {
+            settingRule.VirtualKey = rule.VirtualKey;
+            settingRule.ModifiersCtrl = rule.ModifiersCtrl;
+            settingRule.ModifiersAlt = rule.ModifiersAlt;
+            settingRule.ModifiersShift = rule.ModifiersShift;
+            settingRule.ModifiersWin = rule.ModifiersWin;
+            settingRule.SuppressOriginalKey = rule.SuppressOriginalKey;
+            settingRule.DisplayText = rule.DisplayText;
+        }
+        else
+        {
+            _settingsManager.Current.KeyBindings.Add(rule.Clone());
+        }
+        _settingsManager.Save();
+
+        CurrentRemapBindingText = rule.DisplayText;
+    }
+
+    private void UpdateRemapDisplayForCurrentAction()
+    {
+        var rule = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action);
+        CurrentRemapBindingText = string.IsNullOrEmpty(rule?.DisplayText) ? "None" : rule.DisplayText;
+    }
+
+    private void OnRemapActionTriggered(KeyRemapAction action, KeyPressState state)
+    {
+        _dispatcher.Invoke(() =>
+        {
+            switch (action)
+            {
+                case KeyRemapAction.ToggleMute:
+                    if (state == KeyPressState.Down)
+                    {
+                        ToggleMute();
+                    }
+                    break;
+
+                case KeyRemapAction.PushToTalk:
+                    if (state == KeyPressState.Down)
+                    {
+                        _audioEngine.SetMute(false);
+                    }
+                    else if (state == KeyPressState.Up)
+                    {
+                        _audioEngine.SetMute(true);
+                    }
+                    break;
+
+                case KeyRemapAction.PushToMute:
+                    if (state == KeyPressState.Down)
+                    {
+                        _audioEngine.SetMute(true);
+                    }
+                    else if (state == KeyPressState.Up)
+                    {
+                        _audioEngine.SetMute(false);
+                    }
+                    break;
+
+                case KeyRemapAction.CycleRecordingDevice:
+                    if (state == KeyPressState.Down)
+                    {
+                        CycleRecordingDevice();
+                    }
+                    break;
+
+                case KeyRemapAction.LockVolume:
+                    if (state == KeyPressState.Down)
+                    {
+                        IsLocked = true;
+                        _audioEngine.SetVolume(TargetVolumePercent);
+                        VolumeLockEnforced?.Invoke(this, TargetVolumePercent);
+                    }
+                    break;
+            }
+        });
+    }
+
+    public AudioDeviceInfo? CycleRecordingDevice()
+    {
+        var devices = _audioEngine.GetAvailableCaptureDevices();
+        if (devices.Count == 0) return null;
+
+        string? currentId = _audioEngine.ActiveDevice?.Id ?? SelectedDevice?.Id;
+        int currentIndex = -1;
+        if (!string.IsNullOrEmpty(currentId))
+        {
+            for (int i = 0; i < devices.Count; i++)
+            {
+                if (string.Equals(devices[i].Id, currentId, StringComparison.OrdinalIgnoreCase))
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+        }
+
+        int nextIndex = (currentIndex + 1) % devices.Count;
+        var nextDevice = devices[nextIndex];
+
+        // 1. Set Windows default device via PolicyConfig COM
+        PolicyConfigClient.SetDefaultDeviceAllRoles(nextDevice.Id);
+
+        // 2. Attach AudioLockEngine to the new device
+        _audioEngine.SelectDevice(nextDevice.Id);
+
+        // 3. Update settings and save
+        _settingsManager.Current.SelectedDeviceId = nextDevice.Id;
+        _settingsManager.Current.SelectedDeviceName = nextDevice.Name;
+        _settingsManager.Save();
+
+        // 4. Refresh devices list and selection in UI
+        RefreshDevices();
+
+        // 5. Notify listeners (TrayController -> OSD Banner with microphone name)
+        DeviceSwitched?.Invoke(this, nextDevice);
+
+        return nextDevice;
+    }
+
+    public ICommand CheckForUpdatesCommand { get; }
+
+    private string _updateStatusText = "v1.0.0 (Up to date)";
+    public string UpdateStatusText
+    {
+        get => _updateStatusText;
+        set => SetProperty(ref _updateStatusText, value);
+    }
+
+    private bool _isCheckingUpdates;
+    public bool IsCheckingUpdates
+    {
+        get => _isCheckingUpdates;
+        set => SetProperty(ref _isCheckingUpdates, value);
+    }
+
+    private string? _latestReleaseUrl;
+    public string? LatestReleaseUrl
+    {
+        get => _latestReleaseUrl;
+        set => SetProperty(ref _latestReleaseUrl, value);
+    }
+
+    public async Task CheckForUpdatesAsync()
+    {
+        if (IsCheckingUpdates) return;
+        IsCheckingUpdates = true;
+        UpdateStatusText = "Checking GitHub...";
+
+        try
+        {
+            var checker = new GitHubUpdateChecker();
+            var result = await checker.CheckForUpdatesAsync("1.0.0");
+            if (result.IsUpdateAvailable)
+            {
+                UpdateStatusText = $"New version: v{result.LatestVersion} (Click to open)";
+                LatestReleaseUrl = result.HtmlUrl;
+
+                var choice = System.Windows.MessageBox.Show(
+                    $"A new version of MicAnchor is available!\n\nLatest: v{result.LatestVersion} (Current: v1.0.0)\n\n{result.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
+                    "MicAnchor Update Available",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Information);
+
+                if (choice == System.Windows.MessageBoxResult.Yes)
+                {
+                    GitHubUpdateChecker.OpenReleaseUrl(result.HtmlUrl);
+                }
+            }
+            else if (result.Success)
+            {
+                UpdateStatusText = $"v{result.CurrentVersion} (Up to date)";
+                System.Windows.MessageBox.Show(
+                    $"You are using the latest version of MicAnchor (v{result.CurrentVersion}).",
+                    "MicAnchor Up to Date",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+            }
+            else
+            {
+                UpdateStatusText = !string.IsNullOrWhiteSpace(result.ErrorMessage)
+                    ? $"GitHub: {result.ErrorMessage}"
+                    : "Unable to reach GitHub";
+
+                System.Windows.MessageBox.Show(
+                    $"Could not check for updates: {result.ErrorMessage}",
+                    "Update Check",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText = $"Check failed: {ex.Message}";
+        }
+        finally
+        {
+            IsCheckingUpdates = false;
+        }
+    }
+
     public void ToggleMute()
     {
         bool newState = _audioEngine.ToggleMute();
@@ -255,8 +733,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         : new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)); // Slate 200
 
     public string StatusTooltip => _isLocked
-        ? $"MicLock: Locked at {_targetVolumePercent}% | {_audioEngine.ActiveDevice?.DisplayName ?? "Default Mic"}"
-        : "MicLock: Protection Paused";
+        ? $"MicAnchor: Locked at {_targetVolumePercent}% | {_audioEngine.ActiveDevice?.DisplayName ?? "Default Mic"}"
+        : "MicAnchor: Protection Paused";
 
     public void RefreshDevices()
     {
@@ -269,7 +747,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 AvailableDevices.Add(dev);
             }
 
-            // Re-select active device in combobox
             string? targetId = _settingsManager.Current.SelectedDeviceId;
             if (string.IsNullOrWhiteSpace(targetId) || targetId.Equals("Default", StringComparison.OrdinalIgnoreCase))
             {
@@ -352,7 +829,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        _keyRemapManager.ActionTriggered -= OnRemapActionTriggered;
+        _keyRemapManager.Dispose();
+
         _audioEngine.VolumeChanged -= OnAudioEngineVolumeChanged;
+        _audioEngine.MuteChanged -= OnAudioEngineMuteChanged;
         _audioEngine.VolumeRestored -= OnAudioEngineVolumeRestored;
         _audioEngine.ActiveDeviceChanged -= OnAudioEngineActiveDeviceChanged;
         _audioEngine.LogEntryAdded -= OnAudioEngineLogEntryAdded;

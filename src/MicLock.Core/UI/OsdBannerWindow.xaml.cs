@@ -26,10 +26,7 @@ public partial class OsdBannerWindow : Window
 
     private const double StandardWidth = 290.0;
     private const double StandardHeight = 84.0;
-    private const double CompactWidth = 175.0;
-    private const double CompactHeight = 48.0;
 
-    private bool _isCompactMode;
     private string? _lastDeviceName;
 
     public bool KeepOverlayWhenMuted { get; set; } = false;
@@ -39,6 +36,9 @@ public partial class OsdBannerWindow : Window
     public OsdBannerWindow()
     {
         InitializeComponent();
+
+        Width = StandardWidth;
+        Height = StandardHeight;
 
         _hideTimer = new DispatcherTimer
         {
@@ -74,10 +74,8 @@ public partial class OsdBannerWindow : Window
         try
         {
             var workArea = SystemParameters.WorkArea;
-            double w = double.IsNaN(Width) || Width <= 0 ? StandardWidth : Width;
-            double h = double.IsNaN(Height) || Height <= 0 ? StandardHeight : Height;
-            Left = workArea.Right - w - 20;
-            Top = workArea.Bottom - h - 20;
+            Left = workArea.Right - StandardWidth - 20;
+            Top = workArea.Bottom - StandardHeight - 20;
         }
         catch { }
     }
@@ -98,7 +96,6 @@ public partial class OsdBannerWindow : Window
             if (KeepOverlayWhenMuted)
             {
                 _hideTimer.Stop();
-                ApplyCompactBadgeMode(true);
                 Opacity = OverlayOpacityWhenMuted;
                 if (!IsVisible)
                 {
@@ -128,37 +125,31 @@ public partial class OsdBannerWindow : Window
             _lastDeviceName = deviceName;
         }
 
+        Reposition();
+
+        // Ensure both states use identical layout, typography, and structure
+        SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
+
         if (isMuted)
         {
+            TitleText.Text = "Microphone Off";
             MicBodyPath.Fill = _mutedBrush;
             MuteSlash.Visibility = Visibility.Visible;
-            TitleText.Text = "Microphone Off";
-            SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
 
             if (KeepOverlayWhenMuted)
             {
                 _hideTimer.Stop();
-                ApplyCompactBadgeMode(true);
-                Opacity = OverlayOpacityWhenMuted;
-
-                if (!IsVisible)
-                {
-                    try { Show(); } catch { }
-                    ApplyClickThrough();
-                }
-                Reposition();
+                DisplayBannerSettled(OverlayOpacityWhenMuted);
                 return;
             }
         }
         else
         {
+            TitleText.Text = "Microphone On";
             MicBodyPath.Fill = _tealBrush;
             MuteSlash.Visibility = Visibility.Collapsed;
-            TitleText.Text = "Microphone On";
-            SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
         }
 
-        ApplyCompactBadgeMode(false);
         DisplayBannerTimed();
     }
 
@@ -175,7 +166,8 @@ public partial class OsdBannerWindow : Window
             _lastDeviceName = deviceName;
         }
 
-        ApplyCompactBadgeMode(false);
+        Reposition();
+
         TitleText.Text = $"Microphone {volumePercent}%";
         SubtitleText.Text = string.IsNullOrWhiteSpace(_lastDeviceName) ? "Microphone" : _lastDeviceName;
 
@@ -196,7 +188,8 @@ public partial class OsdBannerWindow : Window
         IsCurrentlyMuted = isMuted;
         _lastDeviceName = deviceName;
 
-        ApplyCompactBadgeMode(false);
+        Reposition();
+
         TitleText.Text = isMuted ? "Microphone Off" : "Active Microphone";
         SubtitleText.Text = deviceName;
 
@@ -204,6 +197,12 @@ public partial class OsdBannerWindow : Window
         {
             MicBodyPath.Fill = _mutedBrush;
             MuteSlash.Visibility = Visibility.Visible;
+            if (KeepOverlayWhenMuted)
+            {
+                _hideTimer.Stop();
+                DisplayBannerSettled(OverlayOpacityWhenMuted);
+                return;
+            }
         }
         else
         {
@@ -212,41 +211,6 @@ public partial class OsdBannerWindow : Window
         }
 
         DisplayBannerTimed();
-    }
-
-    private void ApplyCompactBadgeMode(bool compact)
-    {
-        _isCompactMode = compact;
-        if (compact)
-        {
-            Width = CompactWidth;
-            Height = CompactHeight;
-            CardBorder.Padding = new Thickness(10, 6, 10, 6);
-            CardBorder.CornerRadius = new CornerRadius(6);
-            IconContainer.Width = 22;
-            IconContainer.Height = 22;
-            IconContainer.Margin = new Thickness(0, 0, 8, 0);
-            MicBodyPath.Width = 18;
-            MicBodyPath.Height = 18;
-            TitleText.FontSize = 13;
-            SubtitleText.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            Width = StandardWidth;
-            Height = StandardHeight;
-            CardBorder.Padding = new Thickness(16, 12, 16, 12);
-            CardBorder.CornerRadius = new CornerRadius(8);
-            IconContainer.Width = 32;
-            IconContainer.Height = 32;
-            IconContainer.Margin = new Thickness(0, 0, 14, 0);
-            MicBodyPath.Width = 22;
-            MicBodyPath.Height = 22;
-            TitleText.FontSize = 16;
-            SubtitleText.Visibility = Visibility.Visible;
-        }
-
-        Reposition();
     }
 
     private void DisplayBannerTimed()
@@ -275,23 +239,38 @@ public partial class OsdBannerWindow : Window
         _hideTimer.Start();
     }
 
+    private void DisplayBannerSettled(double targetOpacity)
+    {
+        _hideTimer.Stop();
+
+        if (!IsVisible)
+        {
+            Opacity = 0;
+            try { Show(); } catch { }
+            ApplyClickThrough();
+        }
+
+        var anim = new DoubleAnimation(targetOpacity, TimeSpan.FromMilliseconds(180))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        var slideIn = new DoubleAnimation(0.0, TimeSpan.FromMilliseconds(130))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        BannerTransform.BeginAnimation(TranslateTransform.YProperty, slideIn);
+        BeginAnimation(OpacityProperty, anim);
+    }
+
     private void OnHideTimerTick(object? sender, EventArgs e)
     {
         _hideTimer.Stop();
 
         if (IsCurrentlyMuted && KeepOverlayWhenMuted)
         {
-            ApplyCompactBadgeMode(true);
-            TitleText.Text = "Microphone Off";
-            MicBodyPath.Fill = _mutedBrush;
-            MuteSlash.Visibility = Visibility.Visible;
-
-            var fadeToBadge = new DoubleAnimation(OverlayOpacityWhenMuted, TimeSpan.FromMilliseconds(200))
-            {
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-            };
-            BeginAnimation(OpacityProperty, fadeToBadge);
-            Reposition();
+            // Transition smoothly to persistent semi-transparent state without changing card type/size
+            DisplayBannerSettled(OverlayOpacityWhenMuted);
         }
         else
         {

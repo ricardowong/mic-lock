@@ -21,6 +21,7 @@ public class KeyBindingRule
     public string DisplayText { get; set; } = "Ctrl+Shift+Alt+M";
 
     public bool IsEmpty => VirtualKey == 0;
+    public bool HasModifiers => ModifiersCtrl || ModifiersAlt || ModifiersShift || ModifiersWin;
 
     public KeyBindingRule Clone()
     {

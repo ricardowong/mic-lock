@@ -64,4 +64,60 @@ public class SettingsManagerTests : IDisposable
         var reloadedNegative = new SettingsManager(_tempPath);
         Assert.Equal(0, reloadedNegative.Current.TargetVolumePercent);
     }
+
+    [Fact]
+    public void PersistentOverlaySettings_PersistAndClampCorrectly()
+    {
+        var manager = new SettingsManager(_tempPath);
+        Assert.False(manager.Current.KeepOverlayWhenMuted);
+        Assert.Equal(0.70, manager.Current.OverlayOpacityWhenMuted);
+
+        manager.Current.KeepOverlayWhenMuted = true;
+        manager.Current.OverlayOpacityWhenMuted = 0.85;
+        manager.Save();
+
+        var reloaded = new SettingsManager(_tempPath);
+        Assert.True(reloaded.Current.KeepOverlayWhenMuted);
+        Assert.Equal(0.85, reloaded.Current.OverlayOpacityWhenMuted);
+
+        // Test clamping bounds
+        manager.Current.OverlayOpacityWhenMuted = 1.8;
+        manager.Save();
+        var reloadedHigh = new SettingsManager(_tempPath);
+        Assert.Equal(1.0, reloadedHigh.Current.OverlayOpacityWhenMuted);
+
+        manager.Current.OverlayOpacityWhenMuted = 0.02;
+        manager.Save();
+        var reloadedLow = new SettingsManager(_tempPath);
+        Assert.Equal(0.10, reloadedLow.Current.OverlayOpacityWhenMuted);
+    }
+
+    [Fact]
+    public void KeyBindingsSettings_PersistAndPopulateDefaults()
+    {
+        var manager = new SettingsManager(_tempPath);
+        Assert.True(manager.Current.IsKeyRemapEnabled);
+        Assert.NotNull(manager.Current.KeyBindings);
+        Assert.NotEmpty(manager.Current.KeyBindings);
+
+        // Verify default actions exist
+        Assert.Contains(manager.Current.KeyBindings, b => b.Action == MicLock.Core.Sys.KeyRemapAction.ToggleMute);
+        Assert.Contains(manager.Current.KeyBindings, b => b.Action == MicLock.Core.Sys.KeyRemapAction.CycleRecordingDevice);
+        Assert.Contains(manager.Current.KeyBindings, b => b.Action == MicLock.Core.Sys.KeyRemapAction.LockVolume);
+
+        // Customize and verify save
+        var toggleRule = manager.Current.KeyBindings.First(b => b.Action == MicLock.Core.Sys.KeyRemapAction.ToggleMute);
+        toggleRule.VirtualKey = 0x83; // F20
+        toggleRule.ModifiersCtrl = false;
+        toggleRule.ModifiersAlt = false;
+        toggleRule.ModifiersShift = false;
+        toggleRule.DisplayText = "F20";
+        manager.Save();
+
+        var reloaded = new SettingsManager(_tempPath);
+        var reloadedRule = reloaded.Current.KeyBindings.First(b => b.Action == MicLock.Core.Sys.KeyRemapAction.ToggleMute);
+        Assert.Equal(0x83u, reloadedRule.VirtualKey);
+        Assert.False(reloadedRule.ModifiersCtrl);
+        Assert.Equal("F20", reloadedRule.DisplayText);
+    }
 }

@@ -46,8 +46,12 @@ public class KeyRemapManager : IDisposable
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int vKey);
+
     private readonly object _lock = new();
     private readonly HashSet<uint> _pressedKeys = new();
+    private readonly HashSet<uint> _activeModifiers = new();
     private readonly LowLevelKeyboardProc _hookCallbackDelegate;
     private IntPtr _hookId = IntPtr.Zero;
     private bool _disposed;
@@ -115,6 +119,7 @@ public class KeyRemapManager : IDisposable
                 UnhookWindowsHookEx(_hookId);
                 _hookId = IntPtr.Zero;
                 _pressedKeys.Clear();
+                _activeModifiers.Clear();
             }
         }
     }
@@ -125,6 +130,7 @@ public class KeyRemapManager : IDisposable
         {
             _recordingCallback = onKeyRecorded;
             _recordingCancelCallback = onCancelled;
+            _activeModifiers.Clear();
             IsRecording = true;
         }
 
@@ -140,6 +146,7 @@ public class KeyRemapManager : IDisposable
             _recordingCallback = null;
             var cancelCb = _recordingCancelCallback;
             _recordingCancelCallback = null;
+            _activeModifiers.Clear();
             cancelCb?.Invoke();
         }
 
@@ -176,6 +183,59 @@ public class KeyRemapManager : IDisposable
         }
     }
 
+    public static uint NormalizeModifier(uint vk)
+    {
+        return vk switch
+        {
+            0x11 or 0xA2 or 0xA3 => 0x11, // VK_CONTROL, VK_LCONTROL, VK_RCONTROL
+            0x12 or 0xA4 or 0xA5 => 0x12, // VK_MENU, VK_LMENU, VK_RMENU
+            0x10 or 0xA0 or 0xA1 => 0x10, // VK_SHIFT, VK_LSHIFT, VK_RSHIFT
+            0x5B or 0x5C => 0x5B,         // VK_LWIN, VK_RWIN
+            _ => 0
+        };
+    }
+
+    public static bool IsModifierKey(uint vk)
+    {
+        return NormalizeModifier(vk) != 0;
+    }
+
+    public static bool IsTypingKey(uint vk)
+    {
+        return (vk >= 0x41 && vk <= 0x5A) // A-Z
+            || (vk >= 0x30 && vk <= 0x39) // 0-9
+            || (vk >= 0xBA && vk <= 0xC0) // Punctuation (; = , - . / `)
+            || (vk >= 0xDB && vk <= 0xDF) // [ \ ] '
+            || vk == 0x20                 // Space
+            || vk == 0x08                 // Backspace
+            || vk == 0x0D;                // Enter
+    }
+
+    private void GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, uint hookFlags = 0)
+    {
+        lock (_lock)
+        {
+            ctrl = _activeModifiers.Contains(0x11) ||
+                   ((GetAsyncKeyState(0x11) & 0x8000) != 0) ||
+                   ((GetKeyState(0x11) & 0x8000) != 0);
+
+            alt = _activeModifiers.Contains(0x12) ||
+                  ((GetAsyncKeyState(0x12) & 0x8000) != 0) ||
+                  ((GetKeyState(0x12) & 0x8000) != 0) ||
+                  ((hookFlags & LLKHF_ALTDOWN) != 0);
+
+            shift = _activeModifiers.Contains(0x10) ||
+                    ((GetAsyncKeyState(0x10) & 0x8000) != 0) ||
+                    ((GetKeyState(0x10) & 0x8000) != 0);
+
+            win = _activeModifiers.Contains(0x5B) ||
+                  ((GetAsyncKeyState(0x5B) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(0x5C) & 0x8000) != 0) ||
+                  ((GetKeyState(0x5B) & 0x8000) != 0) ||
+                  ((GetKeyState(0x5C) & 0x8000) != 0);
+        }
+    }
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
@@ -189,25 +249,45 @@ public class KeyRemapManager : IDisposable
 
             if (isDown || isUp)
             {
-                // Check if in recording mode
+                // Maintain active modifiers set
+                uint normMod = NormalizeModifier(vkCode);
+                if (normMod != 0)
+                {
+                    lock (_lock)
+                    {
+                        if (isDown) _activeModifiers.Add(normMod);
+                        else if (isUp) _activeModifiers.Remove(normMod);
+                    }
+                }
+
+                // 1. RECORDING MODE
                 if (IsRecording)
                 {
                     if (isDown)
                     {
-                        // Check if user pressed Escape to cancel
-                        if (vkCode == 0x1B && !IsModifierKeyDown())
+                        // Check if Escape pressed with no modifiers held to cancel
+                        if (vkCode == 0x1B && normMod == 0)
                         {
-                            CancelRecording();
-                            return (IntPtr)1; // Swallow Escape
+                            GetCurrentModifierStates(out bool c, out bool a, out bool s, out bool w, hookStruct.flags);
+                            if (!c && !a && !s && !w)
+                            {
+                                CancelRecording();
+                                return (IntPtr)1; // Swallow Escape
+                            }
                         }
 
-                        // Ignore lone modifier key presses in recording mode until non-modifier is pressed
+                        // Ignore standalone modifier presses until trigger key arrives
                         if (!IsModifierKey(vkCode))
                         {
-                            bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
-                            bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
-                            bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0 || (hookStruct.flags & LLKHF_ALTDOWN) != 0;
-                            bool win = (GetAsyncKeyState(0x5B) & 0x8000) != 0 || (GetAsyncKeyState(0x5C) & 0x8000) != 0;
+                            GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
+
+                            // SAFETY GUARD: Ordinary letters/numbers/typing keys (A-Z, 0-9) MUST have at least one modifier
+                            // to prevent accidentally hijacking normal typing!
+                            if (IsTypingKey(vkCode) && !ctrl && !alt && !shift && !win)
+                            {
+                                // Pass through bare letters while recording so user is not blocked
+                                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+                            }
 
                             var recorded = new KeyBindingRule
                             {
@@ -227,25 +307,32 @@ public class KeyRemapManager : IDisposable
                                 IsRecording = false;
                                 _recordingCallback = null;
                                 _recordingCancelCallback = null;
+                                _activeModifiers.Clear();
                             }
 
                             RecordingEnded?.Invoke();
                             callback?.Invoke(recorded);
 
-                            return (IntPtr)1; // Swallow the recorded key press
+                            return (IntPtr)1; // Swallow trigger key
                         }
                     }
 
-                    return (IntPtr)1; // While recording, swallow keys
+                    // While in recording mode, swallow modifier keys so they don't leak to other apps
+                    return (IntPtr)1;
                 }
 
-                // Normal remap execution
+                // 2. NORMAL EXECUTION MODE
                 if (IsRemapEnabled)
                 {
-                    bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
-                    bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
-                    bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0 || (hookStruct.flags & LLKHF_ALTDOWN) != 0;
-                    bool win = (GetAsyncKeyState(0x5B) & 0x8000) != 0 || (GetAsyncKeyState(0x5C) & 0x8000) != 0;
+                    GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
+                    bool hasModifiers = ctrl || alt || shift || win;
+
+                    // SAFETY GUARD: If this is an ordinary typing key and no modifiers are down,
+                    // it CANNOT match any legitimate global hotkey. Pass through immediately!
+                    if (IsTypingKey(vkCode) && !hasModifiers)
+                    {
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
+                    }
 
                     KeyBindingRule? matchedRule = null;
                     lock (_lock)
@@ -258,6 +345,12 @@ public class KeyRemapManager : IDisposable
                                 rule.ModifiersShift == shift &&
                                 rule.ModifiersWin == win)
                             {
+                                // Refuse to match bare typing keys
+                                if (IsTypingKey(rule.VirtualKey) && !rule.HasModifiers)
+                                {
+                                    continue;
+                                }
+
                                 matchedRule = rule;
                                 break;
                             }
@@ -318,27 +411,12 @@ public class KeyRemapManager : IDisposable
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
 
-    public static bool IsModifierKey(uint vk)
-    {
-        return vk is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C
-                  or 0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5;
-    }
-
-    private static bool IsModifierKeyDown()
-    {
-        return ((GetAsyncKeyState(0x11) & 0x8000) != 0) ||
-               ((GetAsyncKeyState(0x10) & 0x8000) != 0) ||
-               ((GetAsyncKeyState(0x12) & 0x8000) != 0) ||
-               ((GetAsyncKeyState(0x5B) & 0x8000) != 0) ||
-               ((GetAsyncKeyState(0x5C) & 0x8000) != 0);
-    }
-
     public static string FormatKeyName(uint vkCode)
     {
         return vkCode switch
         {
-            0x83 => "F20",
-            0xAD => "VK_VOLUME_MUTE",
+            0x83 => "Dedicated Mic Key",
+            0xAD => "Mute Key",
             0xAE => "Volume Down",
             0xAF => "Volume Up",
             0x13 => "Pause",

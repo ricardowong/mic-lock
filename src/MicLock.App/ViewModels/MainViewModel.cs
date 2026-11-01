@@ -341,6 +341,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void StartRecordingKey()
     {
+        IsKeyRemapEnabled = true;
         IsRecordingKey = true;
         _keyRemapManager.StartRecording(
             onKeyRecorded: rule =>
@@ -365,6 +366,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     {
                         _settingsManager.Current.KeyBindings.Add(rule.Clone());
                     }
+                    _settingsManager.Current.IsKeyRemapEnabled = true;
                     _settingsManager.Save();
 
                     CurrentRemapBindingText = rule.DisplayText;
@@ -421,6 +423,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (preset == null || preset.VirtualKey == 0) return;
 
+        IsKeyRemapEnabled = true;
+
         var rule = new KeyBindingRule
         {
             Action = SelectedRemapAction.Action,
@@ -450,6 +454,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             _settingsManager.Current.KeyBindings.Add(rule.Clone());
         }
+        _settingsManager.Current.IsKeyRemapEnabled = true;
         _settingsManager.Save();
 
         CurrentRemapBindingText = rule.DisplayText;

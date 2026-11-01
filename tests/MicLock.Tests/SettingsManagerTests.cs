@@ -107,17 +107,29 @@ public class SettingsManagerTests : IDisposable
 
         // Customize and verify save
         var toggleRule = manager.Current.KeyBindings.First(b => b.Action == MicLock.Core.Sys.KeyRemapAction.ToggleMute);
-        toggleRule.VirtualKey = 0x83; // F20
+        toggleRule.VirtualKey = 0x83; // Dedicated Hardware Mic Key
         toggleRule.ModifiersCtrl = false;
         toggleRule.ModifiersAlt = false;
         toggleRule.ModifiersShift = false;
-        toggleRule.DisplayText = "F20";
+        toggleRule.DisplayText = "Dedicated Mic Key";
         manager.Save();
 
         var reloaded = new SettingsManager(_tempPath);
         var reloadedRule = reloaded.Current.KeyBindings.First(b => b.Action == MicLock.Core.Sys.KeyRemapAction.ToggleMute);
         Assert.Equal(0x83u, reloadedRule.VirtualKey);
         Assert.False(reloadedRule.ModifiersCtrl);
-        Assert.Equal("F20", reloadedRule.DisplayText);
+        Assert.Equal("Dedicated Mic Key", reloadedRule.DisplayText);
+    }
+
+    [Fact]
+    public void KeyBindings_AutoEnablesRemapWhenConfigured()
+    {
+        var manager = new SettingsManager(_tempPath);
+        manager.Current.IsKeyRemapEnabled = false;
+        manager.Save();
+
+        var reloaded = new SettingsManager(_tempPath);
+        // ClampValues auto-enables IsKeyRemapEnabled if active bindings exist
+        Assert.True(reloaded.Current.IsKeyRemapEnabled);
     }
 }

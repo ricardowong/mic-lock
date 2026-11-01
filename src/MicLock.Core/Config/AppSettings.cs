@@ -34,9 +34,16 @@ public class AppSettings
         if (KeyBindings == null || KeyBindings.Count == 0)
         {
             KeyBindings = KeyBindingRule.CreateDefaultRules();
+            IsKeyRemapEnabled = true;
         }
         else
         {
+            // If active shortcuts are defined, default to active
+            if (KeyBindings.Any(b => !b.IsEmpty && b.VirtualKey != 0))
+            {
+                IsKeyRemapEnabled = true;
+            }
+
             // Ensure all known actions exist in the bindings list
             var existingActions = new HashSet<KeyRemapAction>(KeyBindings.Select(b => b.Action));
             foreach (KeyRemapAction action in Enum.GetValues<KeyRemapAction>())

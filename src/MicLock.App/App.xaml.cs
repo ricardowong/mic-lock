@@ -14,7 +14,6 @@ public partial class App : Application
 {
     private SingleInstanceManager? _singleInstanceManager;
     private AppIpcServer? _ipcServer;
-    private GlobalHotkeyManager? _hotkeyManager;
     private TrayIconController? _trayController;
     private MainViewModel? _viewModel;
     private MainWindow? _mainWindow;
@@ -28,95 +27,115 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        bool isToggleMuteReq = e.Args.Any(a => a.Equals("--toggle-mute", StringComparison.OrdinalIgnoreCase)
-                                            || a.Equals("-m", StringComparison.OrdinalIgnoreCase)
-                                            || a.Equals("/mute", StringComparison.OrdinalIgnoreCase));
+        string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicLock");
+        Directory.CreateDirectory(logDir);
+        string debugLog = Path.Combine(logDir, "startup_trace.log");
+        void Log(string msg) => File.AppendAllText(debugLog, $"{DateTime.Now:HH:mm:ss.fff} {msg}\n");
 
-        bool isCycleDeviceReq = e.Args.Any(a => a.Equals("--cycle-device", StringComparison.OrdinalIgnoreCase)
-                                             || a.Equals("--cycle-mic", StringComparison.OrdinalIgnoreCase)
-                                             || a.Equals("-c", StringComparison.OrdinalIgnoreCase));
+        Log("OnStartup entered");
 
-        bool forceShow = e.Args.Any(a => a.Equals("--show", StringComparison.OrdinalIgnoreCase)
-                                      || a.Equals("--window", StringComparison.OrdinalIgnoreCase));
-
-        // 1. Single Instance Check & IPC Dispatch
-        _singleInstanceManager = new SingleInstanceManager();
-        if (!_singleInstanceManager.TryAcquire())
+        try
         {
+            bool isToggleMuteReq = e.Args.Any(a => a.Equals("--toggle-mute", StringComparison.OrdinalIgnoreCase)
+                                                || a.Equals("-m", StringComparison.OrdinalIgnoreCase)
+                                                || a.Equals("/mute", StringComparison.OrdinalIgnoreCase));
+
+            bool isCycleDeviceReq = e.Args.Any(a => a.Equals("--cycle-device", StringComparison.OrdinalIgnoreCase)
+                                                 || a.Equals("--cycle-mic", StringComparison.OrdinalIgnoreCase)
+                                                 || a.Equals("-c", StringComparison.OrdinalIgnoreCase));
+
+            bool forceShow = e.Args.Any(a => a.Equals("--show", StringComparison.OrdinalIgnoreCase)
+                                          || a.Equals("--window", StringComparison.OrdinalIgnoreCase));
+
+            Log($"Args evaluated: isToggleMuteReq={isToggleMuteReq}, isCycleDeviceReq={isCycleDeviceReq}, forceShow={forceShow}");
+
+            // 1. Single Instance Check & IPC Dispatch
+            _singleInstanceManager = new SingleInstanceManager();
+            bool acquired = _singleInstanceManager.TryAcquire();
+            Log($"TryAcquire: {acquired}");
+            if (!acquired)
+            {
+                if (isToggleMuteReq)
+                {
+                    AppIpcClient.SendCommand("TOGGLE_MUTE");
+                }
+                else if (isCycleDeviceReq)
+                {
+                    AppIpcClient.SendCommand("CYCLE_DEVICE");
+                }
+                else if (forceShow)
+                {
+                    AppIpcClient.SendCommand("SHOW");
+                }
+                else
+                {
+                    AppIpcClient.SendCommand("SHOW");
+                }
+
+                Log("Not first instance, dispatched IPC and shutting down");
+                Shutdown();
+                return;
+            }
+
+            // 2. Start IPC Server for subsequent instances (PowerToys / CLI)
+            Log("Starting IPC Server");
+            _ipcServer = new AppIpcServer();
+            _ipcServer.CommandReceived += OnIpcCommandReceived;
+            _ipcServer.Start();
+
+            // 3. Initialize Core Services
+            Log("Initializing Core Services");
+            var settingsManager = new SettingsManager();
+            var startupManager = new StartupManager();
+            var audioEngine = new AudioLockEngine();
+
+            if (settingsManager.Current.StartWithWindows)
+            {
+                startupManager.SetStartup(true);
+            }
+
+            // 4. Initialize ViewModel & View
+            Log("Initializing ViewModel & View");
+            _viewModel = new MainViewModel(audioEngine, settingsManager, startupManager);
+            _mainWindow = new MainWindow(_viewModel);
+            MainWindow = _mainWindow;
+
+            // 5. Initialize System Tray Controller
+            Log("Initializing Tray Controller");
+            _trayController = new TrayIconController(_viewModel, _mainWindow);
+            audioEngine.VolumeRestored += (s, args) =>
+            {
+                _trayController.ShowVolumeRestoredNotification(args.PreviousPercent, args.RestoredPercent, args.DeviceName);
+            };
+
+            // 6. Handle Initial Launch Arguments
             if (isToggleMuteReq)
             {
-                AppIpcClient.SendCommand("TOGGLE_MUTE");
+                _viewModel.ToggleMute();
             }
             else if (isCycleDeviceReq)
             {
-                AppIpcClient.SendCommand("CYCLE_DEVICE");
+                _viewModel.CycleRecordingDevice();
             }
-            else if (forceShow)
+
+            bool startMinimized = !forceShow && (isToggleMuteReq
+                                  || isCycleDeviceReq
+                                  || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
+                                  || settingsManager.Current.StartMinimized);
+
+            Log($"startMinimized: {startMinimized}");
+            if (!startMinimized)
             {
-                AppIpcClient.SendCommand("SHOW");
+                Log("Calling _mainWindow.Show()");
+                _mainWindow.Show();
             }
-            else
-            {
-                AppIpcClient.SendCommand("SHOW");
-            }
-
-            Shutdown();
-            return;
+            Log("OnStartup finished successfully");
         }
-
-        // 2. Start IPC Server for subsequent instances (PowerToys / CLI)
-        _ipcServer = new AppIpcServer();
-        _ipcServer.CommandReceived += OnIpcCommandReceived;
-        _ipcServer.Start();
-
-        // 3. Initialize Core Services
-        var settingsManager = new SettingsManager();
-        var startupManager = new StartupManager();
-        var audioEngine = new AudioLockEngine();
-
-        if (settingsManager.Current.StartWithWindows)
+        catch (Exception ex)
         {
-            startupManager.SetStartup(true);
-        }
-
-        // 4. Initialize ViewModel & View
-        _viewModel = new MainViewModel(audioEngine, settingsManager, startupManager);
-        _mainWindow = new MainWindow(_viewModel);
-        MainWindow = _mainWindow;
-
-        // 5. Initialize System Tray Controller
-        _trayController = new TrayIconController(_viewModel, _mainWindow);
-        audioEngine.VolumeRestored += (s, args) =>
-        {
-            _trayController.ShowVolumeRestoredNotification(args.PreviousPercent, args.RestoredPercent, args.DeviceName);
-        };
-
-        // 6. Initialize Global Hotkey (Default: Ctrl+Shift+Alt+M for SoundSwitch / PowerToys compatibility)
-        _hotkeyManager = new GlobalHotkeyManager();
-        _hotkeyManager.HotkeyPressed += () =>
-        {
-            _viewModel.ToggleMute();
-        };
-        _hotkeyManager.Register();
-
-        // 7. Handle Initial Launch Arguments
-        if (isToggleMuteReq)
-        {
-            _viewModel.ToggleMute();
-        }
-        else if (isCycleDeviceReq)
-        {
-            _viewModel.CycleRecordingDevice();
-        }
-
-        bool startMinimized = !forceShow && (isToggleMuteReq
-                              || isCycleDeviceReq
-                              || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
-                              || settingsManager.Current.StartMinimized);
-
-        if (!startMinimized)
-        {
-            _mainWindow.Show();
+            Log($"Exception: {ex}");
+            File.WriteAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicLock", "startup_error.log"), ex.ToString());
+            throw;
         }
     }
 
@@ -155,7 +174,6 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _hotkeyManager?.Dispose();
         _ipcServer?.Dispose();
         _trayController?.Dispose();
         _viewModel?.Dispose();

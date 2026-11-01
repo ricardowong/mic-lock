@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](LICENSE)
 [![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-blue.svg)](https://microsoft.com/windows)
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com)
-[![Build Status](https://img.shields.io/badge/Tests-53%20Passed-brightgreen.svg)]()
+[![Build Status](https://img.shields.io/badge/Tests-69%20Passed-brightgreen.svg)]()
 
 ---
 
@@ -23,7 +23,7 @@ Popular apps constantly adjust your microphone gain in the background without as
 Set your microphone level (e.g., 100% or 80%), and MicAnchor keeps it there. If Discord, Zoom, Steam, or Chrome tries to lower your slider, MicAnchor instantly restores it before anyone notices.
 
 ### ⌨️ Remap Any Key (Push-to-Talk, Mute & Switch)
-Turn any keyboard key, dedicated laptop mic button (`F20`), media key, or shortcut combo (`Ctrl+Shift+M`) into an instant action:
+Turn any keyboard key, dedicated mic button (like Keychron or laptop mic keys), media key, or custom shortcut combo (`Win+C`, `Ctrl+Alt+M`, `Ctrl+Shift+Alt+M`) into an instant action:
 * **Toggle Mute:** One tap to mute or unmute.
 * **Push-to-Talk:** Speak while holding the key down; release to stay muted.
 * **Push-to-Mute:** Quick cough button—mutes only while held.

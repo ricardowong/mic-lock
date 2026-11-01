@@ -217,16 +217,28 @@ public class KeyRemapManager : IDisposable
         {
             ctrl = _activeModifiers.Contains(0x11) ||
                    ((GetAsyncKeyState(0x11) & 0x8000) != 0) ||
-                   ((GetKeyState(0x11) & 0x8000) != 0);
+                   ((GetAsyncKeyState(0xA2) & 0x8000) != 0) ||
+                   ((GetAsyncKeyState(0xA3) & 0x8000) != 0) ||
+                   ((GetKeyState(0x11) & 0x8000) != 0) ||
+                   ((GetKeyState(0xA2) & 0x8000) != 0) ||
+                   ((GetKeyState(0xA3) & 0x8000) != 0);
 
             alt = _activeModifiers.Contains(0x12) ||
                   ((GetAsyncKeyState(0x12) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(0xA4) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(0xA5) & 0x8000) != 0) ||
                   ((GetKeyState(0x12) & 0x8000) != 0) ||
+                  ((GetKeyState(0xA4) & 0x8000) != 0) ||
+                  ((GetKeyState(0xA5) & 0x8000) != 0) ||
                   ((hookFlags & LLKHF_ALTDOWN) != 0);
 
             shift = _activeModifiers.Contains(0x10) ||
                     ((GetAsyncKeyState(0x10) & 0x8000) != 0) ||
-                    ((GetKeyState(0x10) & 0x8000) != 0);
+                    ((GetAsyncKeyState(0xA0) & 0x8000) != 0) ||
+                    ((GetAsyncKeyState(0xA1) & 0x8000) != 0) ||
+                    ((GetKeyState(0x10) & 0x8000) != 0) ||
+                    ((GetKeyState(0xA0) & 0x8000) != 0) ||
+                    ((GetKeyState(0xA1) & 0x8000) != 0);
 
             win = _activeModifiers.Contains(0x5B) ||
                   ((GetAsyncKeyState(0x5B) & 0x8000) != 0) ||

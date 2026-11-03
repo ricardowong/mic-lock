@@ -8,7 +8,8 @@ public class StartupManager
 {
     private const string RunRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
-    public const string DefaultAppName = "MicLock";
+    public const string DefaultAppName = "MicAnchor";
+    public const string LegacyAppName = "MicLock";
     public const string DefaultArguments = "--minimized";
 
     private static readonly byte[] StartupEnabledBytes = new byte[] { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -19,7 +20,15 @@ public class StartupManager
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: false);
             var value = key?.GetValue(appName) as string;
-            return !string.IsNullOrWhiteSpace(value);
+            if (!string.IsNullOrWhiteSpace(value)) return true;
+
+            // Also check legacy name if searching for default
+            if (appName == DefaultAppName)
+            {
+                var legacyVal = key?.GetValue(LegacyAppName) as string;
+                return !string.IsNullOrWhiteSpace(legacyVal);
+            }
+            return false;
         }
         catch
         {
@@ -33,6 +42,18 @@ public class StartupManager
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
             if (key == null) return false;
+
+            // Clean up legacy "MicLock" duplicate entry to prevent double-launch
+            if (appName == DefaultAppName && key.GetValue(LegacyAppName) != null)
+            {
+                key.DeleteValue(LegacyAppName, throwOnMissingValue: false);
+                try
+                {
+                    using var approvedKey = Registry.CurrentUser.OpenSubKey(StartupApprovedKey, writable: true);
+                    approvedKey?.DeleteValue(LegacyAppName, throwOnMissingValue: false);
+                }
+                catch { }
+            }
 
             if (enable)
             {

@@ -60,6 +60,11 @@ public class UpdateCheckerTests
         Assert.Equal("1.1.0", result.LatestVersion);
         Assert.Equal("MicAnchor v1.1.0 Release", result.ReleaseTitle);
         Assert.Equal("https://github.com/ricardowong/mic-lock/releases/download/v1.1.0/MicLock-Setup-v1.1.0.exe", result.InstallerDownloadUrl);
+
+        var upToDateResult = await checker.CheckForUpdatesAsync("1.1.0");
+        Assert.True(upToDateResult.Success);
+        Assert.False(upToDateResult.IsUpdateAvailable);
+        Assert.Equal("1.1.0", upToDateResult.CurrentVersion);
     }
 
     private class MockHttpMessageHandler : HttpMessageHandler

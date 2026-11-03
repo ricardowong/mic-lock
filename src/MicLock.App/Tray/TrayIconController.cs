@@ -119,7 +119,7 @@ public class TrayIconController : IDisposable
         updatesItem.Click += async (s, e) =>
         {
             var checker = new GitHubUpdateChecker();
-            var res = await checker.CheckForUpdatesAsync("1.0.0");
+            var res = await checker.CheckForUpdatesAsync(MainViewModel.AppVersionString);
             if (res.IsUpdateAvailable)
             {
                 var choice = System.Windows.Forms.MessageBox.Show(

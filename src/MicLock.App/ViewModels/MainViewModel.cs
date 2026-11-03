@@ -570,7 +570,16 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public ICommand CheckForUpdatesCommand { get; }
 
-    private string _updateStatusText = "v1.0.0 (Up to date)";
+    public static string AppVersionString
+    {
+        get
+        {
+            var ver = typeof(MainViewModel).Assembly.GetName().Version;
+            return ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "1.1.0";
+        }
+    }
+
+    private string _updateStatusText = $"v{AppVersionString} (Up to date)";
     public string UpdateStatusText
     {
         get => _updateStatusText;
@@ -600,14 +609,14 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var checker = new GitHubUpdateChecker();
-            var result = await checker.CheckForUpdatesAsync("1.0.0");
+            var result = await checker.CheckForUpdatesAsync(AppVersionString);
             if (result.IsUpdateAvailable)
             {
                 UpdateStatusText = $"New version: v{result.LatestVersion} (Click to open)";
                 LatestReleaseUrl = result.HtmlUrl;
 
                 var choice = System.Windows.MessageBox.Show(
-                    $"A new version of MicAnchor is available!\n\nLatest: v{result.LatestVersion} (Current: v1.0.0)\n\n{result.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
+                    $"A new version of MicAnchor is available!\n\nLatest: v{result.LatestVersion} (Current: v{result.CurrentVersion})\n\n{result.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
                     "MicAnchor Update Available",
                     System.Windows.MessageBoxButton.YesNo,
                     System.Windows.MessageBoxImage.Information);

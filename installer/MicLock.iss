@@ -1,9 +1,9 @@
-; MicLock Inno Setup 6 Script
+; MicAnchor Inno Setup 6 Script
 ; Builds a zero-elevation, lightweight Windows installer
 
-#define MyAppName "MicLock"
-#define MyAppVersion "1.2.2"
-#define MyAppPublisher "MicLock Open Source"
+#define MyAppName "MicAnchor"
+#define MyAppVersion "1.2.3"
+#define MyAppPublisher "MicAnchor Open Source"
 #define MyAppURL "https://github.com/ricardowong/mic-lock"
 #define MyAppExeName "MicLock.exe"
 
@@ -20,7 +20,7 @@ DisableProgramGroupPage=yes
 ; Per-user install: zero admin elevation / zero UAC prompt required!
 PrivilegesRequired=lowest
 OutputDir=..\dist\installer
-OutputBaseFilename=MicLock-Setup-v{#MyAppVersion}
+OutputBaseFilename=MicAnchor-Setup-v{#MyAppVersion}
 SetupIconFile=..\src\MicLock.App\Assets\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -30,7 +30,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "startwithwindows"; Description: "Start MicLock automatically when logging into Windows"; GroupDescription: "Startup Options:"
+Name: "startwithwindows"; Description: "Start MicAnchor automatically when logging into Windows"; GroupDescription: "Startup Options:"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]

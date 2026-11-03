@@ -28,7 +28,7 @@ public class GitHubUpdateChecker
         _httpClient = httpClient ?? new HttpClient();
         if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
         {
-            _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MicLock-Desktop", "1.2.2"));
+            _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MicAnchor-Desktop", "1.2.3"));
         }
         _httpClient.Timeout = TimeSpan.FromSeconds(6);
     }

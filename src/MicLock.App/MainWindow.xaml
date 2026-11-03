@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MicLock.App"
         mc:Ignorable="d"
-        Title="MicLock - Microphone Volume Lock &amp; Remap"
+        Title="MicAnchor - Microphone Volume Lock &amp; Remap"
         Height="670" Width="460"
         MinHeight="600" MinWidth="450"
         ResizeMode="CanResizeWithGrip"
@@ -269,7 +269,7 @@
                               Fill="{StaticResource AccentTeal}" Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="MicLock" FontSize="18" FontWeight="Bold" Foreground="#0F172A" LineHeight="20"/>
+                        <TextBlock Text="MicAnchor" FontSize="18" FontWeight="Bold" Foreground="#0F172A" LineHeight="20"/>
                         <TextBlock Text="Volume Lock &amp; Remap" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,1,0,0"/>
                     </StackPanel>
                 </StackPanel>

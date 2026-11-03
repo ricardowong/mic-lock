@@ -13,13 +13,13 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>MicLock</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <AssemblyTitle>MicLock</AssemblyTitle>
-    <Product>MicLock</Product>
-    <Description>MicLock - Windows Microphone Volume Lock and Hotkey Remap Utility</Description>
-    <Version>1.2.2</Version>
-    <AssemblyVersion>1.2.2.0</AssemblyVersion>
-    <FileVersion>1.2.2.0</FileVersion>
-    <Company>MicLock Open Source Project</Company>
+    <AssemblyTitle>MicAnchor</AssemblyTitle>
+    <Product>MicAnchor</Product>
+    <Description>MicAnchor - Windows Microphone Volume Lock and Hotkey Remap Utility</Description>
+    <Version>1.2.3</Version>
+    <AssemblyVersion>1.2.3.0</AssemblyVersion>
+    <FileVersion>1.2.3.0</FileVersion>
+    <Company>MicAnchor Open Source Project</Company>
   </PropertyGroup>
 
   <ItemGroup>

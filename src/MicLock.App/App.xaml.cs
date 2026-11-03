@@ -17,11 +17,29 @@ public partial class App : Application
     private TrayIconController? _trayController;
     private MainViewModel? _viewModel;
     private MainWindow? _mainWindow;
-    private GlobalHotkeyManager? _hotkeyManager;
 
     public App()
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        DispatcherUnhandledException += (s, args) =>
+        {
+            try
+            {
+                string errPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicLock", "unhandled_dispatcher_error.log");
+                File.WriteAllText(errPath, args.Exception.ToString());
+            }
+            catch { }
+            args.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+        {
+            try
+            {
+                string errPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicLock", "unhandled_domain_error.log");
+                File.WriteAllText(errPath, args.ExceptionObject?.ToString() ?? "Unknown domain error");
+            }
+            catch { }
+        };
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -113,13 +131,7 @@ public partial class App : Application
                 _trayController.ShowVolumeRestoredNotification(args.PreviousPercent, args.RestoredPercent, args.DeviceName);
             };
 
-            // 6. Global Hotkey Engine (RegisterHotKey for Ctrl+Shift+Alt+M)
-            // Provides 100% reliable native OS message-loop hotkey support for both direct entry and PowerToys remap
-            _hotkeyManager = new GlobalHotkeyManager();
-            _hotkeyManager.HotkeyPressed += () => _viewModel?.ToggleMute();
-            _hotkeyManager.Register(GlobalHotkeyManager.MOD_CONTROL | GlobalHotkeyManager.MOD_SHIFT | GlobalHotkeyManager.MOD_ALT | GlobalHotkeyManager.MOD_NOREPEAT, 0x4D /* 'M' */);
-
-            // 7. Handle Initial Launch Arguments
+            // 6. Handle Initial Launch Arguments
             if (isToggleMuteReq)
             {
                 _viewModel.ToggleMute();
@@ -131,6 +143,7 @@ public partial class App : Application
 
             bool startMinimized = !forceShow && (isToggleMuteReq
                                   || isCycleDeviceReq
+                                  || settingsManager.Current.StartMinimized
                                   || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)));
 
             Log($"startMinimized: {startMinimized}");
@@ -154,38 +167,50 @@ public partial class App : Application
     {
         Dispatcher.Invoke(() =>
         {
-            switch (command.ToUpperInvariant())
+            try
             {
-                case "TOGGLE_MUTE":
-                    _viewModel?.ToggleMute();
-                    break;
-                case "CYCLE_DEVICE":
-                case "CYCLE_MIC":
-                    _viewModel?.CycleRecordingDevice();
-                    break;
-                case "LOCK_VOLUME":
-                    if (_viewModel != null)
-                    {
-                        _viewModel.IsLocked = true;
-                        _viewModel.AudioEngine.SetVolume(_viewModel.TargetVolumePercent);
-                    }
-                    break;
-                case "SHOW":
-                    _trayController?.ShowMainWindow();
-                    break;
-                case "VOLUME_UP":
-                    _viewModel?.AdjustVolume(5);
-                    break;
-                case "VOLUME_DOWN":
-                    _viewModel?.AdjustVolume(-5);
-                    break;
+                switch (command.ToUpperInvariant())
+                {
+                    case "TOGGLE_MUTE":
+                        _viewModel?.ToggleMute();
+                        break;
+                    case "CYCLE_DEVICE":
+                    case "CYCLE_MIC":
+                        _viewModel?.CycleRecordingDevice();
+                        break;
+                    case "LOCK_VOLUME":
+                        if (_viewModel != null)
+                        {
+                            _viewModel.IsLocked = true;
+                            _viewModel.AudioEngine.SetVolume(_viewModel.TargetVolumePercent);
+                        }
+                        break;
+                    case "SHOW":
+                        _trayController?.ShowMainWindow();
+                        break;
+                    case "VOLUME_UP":
+                        _viewModel?.AdjustVolume(5);
+                        break;
+                    case "VOLUME_DOWN":
+                        _viewModel?.AdjustVolume(-5);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                string errPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicLock", "ipc_error.log");
+                File.WriteAllText(errPath, ex.ToString());
             }
         });
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _hotkeyManager?.Dispose();
+        string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MicLock");
+        string debugLog = Path.Combine(logDir, "startup_trace.log");
+        File.AppendAllText(debugLog, $"{DateTime.Now:HH:mm:ss.fff} OnExit entered with exitCode={e.ApplicationExitCode}\n");
+        File.AppendAllText(debugLog, $"{Environment.StackTrace}\n");
+
         _ipcServer?.Dispose();
         _trayController?.Dispose();
         _viewModel?.Dispose();

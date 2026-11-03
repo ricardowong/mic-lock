@@ -228,4 +228,45 @@ public class KeyRemapManagerTests
         Assert.True(winC.HasModifiers);
         Assert.Equal("Win+C", winC.DisplayText);
     }
+
+    [Fact]
+    public void KeyBindingRule_UserConfiguredCtrlShiftAltN_HasCorrectModifiers()
+    {
+        var rule = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.Shortcut,
+            VirtualKey = 78, // 'N'
+            ModifiersCtrl = true,
+            ModifiersShift = true,
+            ModifiersAlt = true,
+            ModifiersWin = false,
+            DisplayText = "Ctrl+Shift+Alt+N"
+        };
+
+        Assert.True(rule.ModifiersCtrl);
+        Assert.True(rule.ModifiersShift);
+        Assert.True(rule.ModifiersAlt);
+        Assert.False(rule.ModifiersWin);
+        Assert.Equal(78u, rule.VirtualKey);
+        Assert.Equal("Ctrl+Shift+Alt+N", rule.DisplayText);
+    }
+
+    [Theory]
+    [InlineData(0x5Bu, 0x5Bu)] // VK_LWIN
+    [InlineData(0x5Cu, 0x5Bu)] // VK_RWIN
+    [InlineData(0x11u, 0x11u)] // VK_CONTROL
+    [InlineData(0xA2u, 0x11u)] // VK_LCONTROL
+    [InlineData(0xA3u, 0x11u)] // VK_RCONTROL
+    [InlineData(0x12u, 0x12u)] // VK_MENU
+    [InlineData(0xA4u, 0x12u)] // VK_LMENU
+    [InlineData(0xA5u, 0x12u)] // VK_RMENU
+    [InlineData(0x10u, 0x10u)] // VK_SHIFT
+    [InlineData(0xA0u, 0x10u)] // VK_LSHIFT
+    [InlineData(0xA1u, 0x10u)] // VK_RSHIFT
+    public void NormalizeModifier_MapsLeftAndRightToStandardModifier(uint inputVk, uint expectedNormalized)
+    {
+        uint actual = KeyRemapManager.NormalizeModifier(inputVk);
+        Assert.Equal(expectedNormalized, actual);
+    }
 }

@@ -85,6 +85,11 @@ public class KeyRemapManager : IDisposable
     private IntPtr _hookId = IntPtr.Zero;
     private bool _disposed;
 
+    private bool _isShortcutInvoked;
+    private KeyBindingRule? _invokedRule;
+    private bool _invokedWithWin;
+    private bool _recordingPendingWinUp;
+
     private Action<KeyBindingRule>? _recordingCallback;
     private Action? _recordingCancelCallback;
 
@@ -142,6 +147,10 @@ public class KeyRemapManager : IDisposable
                 _hookId = IntPtr.Zero;
                 _pressedKeys.Clear();
                 _activeModifiers.Clear();
+                _isShortcutInvoked = false;
+                _invokedRule = null;
+                _invokedWithWin = false;
+                _recordingPendingWinUp = false;
             }
         }
     }
@@ -169,6 +178,7 @@ public class KeyRemapManager : IDisposable
             var cancelCb = _recordingCancelCallback;
             _recordingCancelCallback = null;
             _activeModifiers.Clear();
+            _recordingPendingWinUp = false;
             cancelCb?.Invoke();
         }
 
@@ -238,7 +248,8 @@ public class KeyRemapManager : IDisposable
     {
         try
         {
-            var inputs = new INPUT[2];
+            var inputs = new INPUT[4];
+            // 1. VK_DUMMY 0xFF down
             inputs[0] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -248,12 +259,13 @@ public class KeyRemapManager : IDisposable
                     {
                         wVk = (ushort)VK_DUMMY,
                         wScan = 0,
-                        dwFlags = 0, // Key down
+                        dwFlags = 0,
                         time = 0,
                         dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
                     }
                 }
             };
+            // 2. VK_DUMMY 0xFF up
             inputs[1] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -263,7 +275,39 @@ public class KeyRemapManager : IDisposable
                     {
                         wVk = (ushort)VK_DUMMY,
                         wScan = 0,
-                        dwFlags = KEYEVENTF_KEYUP, // Key up
+                        dwFlags = KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            // 3. VK_CONTROL (0x11) with scan code 0x1D down (AutoHotkey / PowerToys shell mask)
+            inputs[2] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = 0x11,
+                        wScan = 0x1D,
+                        dwFlags = 0,
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            // 4. VK_CONTROL (0x11) with scan code 0x1D up
+            inputs[3] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = 0x11,
+                        wScan = 0x1D,
+                        dwFlags = KEYEVENTF_KEYUP,
                         time = 0,
                         dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
                     }
@@ -355,6 +399,7 @@ public class KeyRemapManager : IDisposable
                             if (win)
                             {
                                 SuppressStartMenu();
+                                _recordingPendingWinUp = true;
                             }
 
                             var recorded = new KeyBindingRule
@@ -387,6 +432,15 @@ public class KeyRemapManager : IDisposable
                             return (IntPtr)1; // Swallow trigger key
                         }
                     }
+                    else if (isUp)
+                    {
+                        if (_recordingPendingWinUp && (vkCode == 0x5B || vkCode == 0x5C))
+                        {
+                            _recordingPendingWinUp = false;
+                            SuppressStartMenu();
+                            return (IntPtr)1; // Swallow Win key-up after recording so Start Menu doesn't open
+                        }
+                    }
 
                     // While in recording mode, swallow modifier keys so they don't leak to other apps
                     return (IntPtr)1;
@@ -395,58 +449,62 @@ public class KeyRemapManager : IDisposable
                 // 2. NORMAL EXECUTION MODE (PowerToys: HandleSingleKeyRemapEvent + HandleShortcutRemapEvent)
                 if (IsRemapEnabled)
                 {
-                    GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
-                    bool hasModifiers = ctrl || alt || shift || win;
-                    KeyBindingRule? matchedRule = null;
-
-                    if (hasModifiers)
+                    if (isDown)
                     {
-                        // Stage 2: Shortcut Remap (PowerToys HandleShortcutRemapEvent)
-                        // Triggered when modifier keys are depressed + trigger key
-                        lock (_lock)
+                        // Check if currently invoked shortcut trigger key is repeating
+                        if (_isShortcutInvoked && _invokedRule != null && vkCode == _invokedRule.VirtualKey)
                         {
-                            foreach (var rule in Bindings)
+                            return (IntPtr)1; // Swallow typematic repeat of invoked trigger key
+                        }
+
+                        GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
+                        bool hasModifiers = ctrl || alt || shift || win;
+                        KeyBindingRule? matchedRule = null;
+
+                        if (hasModifiers)
+                        {
+                            // Stage 2: Shortcut Remap (PowerToys HandleShortcutRemapEvent)
+                            lock (_lock)
                             {
-                                if (rule.MappingType == KeyMappingType.Shortcut &&
-                                    rule.VirtualKey == vkCode &&
-                                    rule.ModifiersCtrl == ctrl &&
-                                    rule.ModifiersAlt == alt &&
-                                    rule.ModifiersShift == shift &&
-                                    rule.ModifiersWin == win &&
-                                    !rule.IsEmpty)
+                                foreach (var rule in Bindings)
                                 {
-                                    matchedRule = rule;
-                                    break;
+                                    if (rule.MappingType == KeyMappingType.Shortcut &&
+                                        rule.VirtualKey == vkCode &&
+                                        rule.ModifiersCtrl == ctrl &&
+                                        rule.ModifiersAlt == alt &&
+                                        rule.ModifiersShift == shift &&
+                                        rule.ModifiersWin == win &&
+                                        !rule.IsEmpty)
+                                    {
+                                        matchedRule = rule;
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
-                    else if (!IsTypingKey(vkCode))
-                    {
-                        // Stage 1: Single Key Remap (PowerToys HandleSingleKeyRemapEvent)
-                        // Only triggered if NO modifiers are active and NOT a standard alphanumeric typing key
-                        lock (_lock)
+                        else if (!IsTypingKey(vkCode))
                         {
-                            foreach (var rule in Bindings)
+                            // Stage 1: Single Key Remap (PowerToys HandleSingleKeyRemapEvent)
+                            lock (_lock)
                             {
-                                if (rule.MappingType == KeyMappingType.SingleKey &&
-                                    rule.VirtualKey == vkCode &&
-                                    !rule.IsEmpty)
+                                foreach (var rule in Bindings)
                                 {
-                                    matchedRule = rule;
-                                    break;
+                                    if (rule.MappingType == KeyMappingType.SingleKey &&
+                                        rule.VirtualKey == vkCode &&
+                                        !rule.IsEmpty)
+                                    {
+                                        matchedRule = rule;
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (matchedRule != null)
-                    {
-                        bool isWinShortcut = matchedRule.ModifiersWin || win;
-
-                        if (isDown)
+                        if (matchedRule != null)
                         {
+                            bool isWinShortcut = matchedRule.ModifiersWin || win;
                             bool firstPress = false;
+
                             lock (_lock)
                             {
                                 if (!_pressedKeys.Contains(vkCode))
@@ -456,7 +514,11 @@ public class KeyRemapManager : IDisposable
                                 }
                             }
 
-                            // PowerToys Start Menu suppression: Inject dummy key (0xFF) so Windows Explorer does NOT open Start Menu
+                            _isShortcutInvoked = true;
+                            _invokedRule = matchedRule;
+                            _invokedWithWin = isWinShortcut;
+
+                            // PowerToys Start Menu suppression: Inject dummy key + Ctrl mask
                             if (isWinShortcut)
                             {
                                 SuppressStartMenu();
@@ -472,30 +534,72 @@ public class KeyRemapManager : IDisposable
                                 return (IntPtr)1;
                             }
                         }
-                        else if (isUp)
+                    }
+                    else if (isUp)
+                    {
+                        // Handle release when a shortcut or remap was invoked
+                        if (_recordingPendingWinUp && (vkCode == 0x5B || vkCode == 0x5C))
                         {
-                            bool wasDown = false;
-                            lock (_lock)
+                            _recordingPendingWinUp = false;
+                            SuppressStartMenu();
+                            return (IntPtr)1;
+                        }
+
+                        if (_isShortcutInvoked && _invokedRule != null)
+                        {
+                            if (vkCode == _invokedRule.VirtualKey)
                             {
-                                if (_pressedKeys.Contains(vkCode))
+                                bool wasDown = false;
+                                lock (_lock)
                                 {
-                                    _pressedKeys.Remove(vkCode);
-                                    wasDown = true;
+                                    if (_pressedKeys.Contains(vkCode))
+                                    {
+                                        _pressedKeys.Remove(vkCode);
+                                        wasDown = true;
+                                    }
+                                }
+
+                                if (_invokedWithWin)
+                                {
+                                    SuppressStartMenu();
+                                }
+
+                                if (wasDown)
+                                {
+                                    ActionTriggered?.Invoke(_invokedRule.Action, KeyPressState.Up);
+                                }
+
+                                GetCurrentModifierStates(out bool c, out bool a, out bool s, out bool w, hookStruct.flags);
+                                if (!c && !a && !s && !w)
+                                {
+                                    _isShortcutInvoked = false;
+                                    _invokedRule = null;
+                                    _invokedWithWin = false;
+                                }
+
+                                if (_invokedRule == null || _invokedRule.SuppressOriginalKey)
+                                {
+                                    return (IntPtr)1;
                                 }
                             }
-
-                            if (isWinShortcut)
+                            else if (_invokedWithWin && (vkCode == 0x5B || vkCode == 0x5C))
                             {
+                                // PowerToys Start Menu Suppression: Physical Windows key release swallowed when part of an invoked shortcut
                                 SuppressStartMenu();
+                                _invokedWithWin = false;
+                                _isShortcutInvoked = false;
+                                _invokedRule = null;
+                                return (IntPtr)1;
                             }
-
-                            if (wasDown)
+                            else if (normMod != 0)
                             {
-                                ActionTriggered?.Invoke(matchedRule.Action, KeyPressState.Up);
-                            }
-
-                            if (matchedRule.SuppressOriginalKey)
-                            {
+                                GetCurrentModifierStates(out bool c, out bool a, out bool s, out bool w, hookStruct.flags);
+                                if (!c && !a && !s && !w)
+                                {
+                                    _isShortcutInvoked = false;
+                                    _invokedRule = null;
+                                    _invokedWithWin = false;
+                                }
                                 return (IntPtr)1;
                             }
                         }

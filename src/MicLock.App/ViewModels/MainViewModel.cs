@@ -575,7 +575,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get
         {
             var ver = typeof(MainViewModel).Assembly.GetName().Version;
-            return ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "1.2.1";
+            return ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "1.2.2";
         }
     }
 

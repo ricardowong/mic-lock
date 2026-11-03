@@ -238,7 +238,7 @@ public class KeyRemapManager : IDisposable
     {
         try
         {
-            var inputs = new INPUT[1];
+            var inputs = new INPUT[2];
             inputs[0] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -248,7 +248,22 @@ public class KeyRemapManager : IDisposable
                     {
                         wVk = (ushort)VK_DUMMY,
                         wScan = 0,
-                        dwFlags = KEYEVENTF_KEYUP,
+                        dwFlags = 0, // Key down
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            inputs[1] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)VK_DUMMY,
+                        wScan = 0,
+                        dwFlags = KEYEVENTF_KEYUP, // Key up
                         time = 0,
                         dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
                     }
@@ -262,21 +277,28 @@ public class KeyRemapManager : IDisposable
 
     private void GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, uint hookFlags = 0)
     {
-        ctrl = ((GetAsyncKeyState(0x11) & 0x8000) != 0) ||
-               ((GetAsyncKeyState(0xA2) & 0x8000) != 0) ||
-               ((GetAsyncKeyState(0xA3) & 0x8000) != 0);
+        lock (_lock)
+        {
+            ctrl = _activeModifiers.Contains(0x11) ||
+                   ((GetAsyncKeyState(0x11) & 0x8000) != 0) ||
+                   ((GetAsyncKeyState(0xA2) & 0x8000) != 0) ||
+                   ((GetAsyncKeyState(0xA3) & 0x8000) != 0);
 
-        alt = ((GetAsyncKeyState(0x12) & 0x8000) != 0) ||
-              ((GetAsyncKeyState(0xA4) & 0x8000) != 0) ||
-              ((GetAsyncKeyState(0xA5) & 0x8000) != 0) ||
-              ((hookFlags & LLKHF_ALTDOWN) != 0);
+            alt = _activeModifiers.Contains(0x12) ||
+                  ((GetAsyncKeyState(0x12) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(0xA4) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(0xA5) & 0x8000) != 0) ||
+                  ((hookFlags & LLKHF_ALTDOWN) != 0);
 
-        shift = ((GetAsyncKeyState(0x10) & 0x8000) != 0) ||
-                ((GetAsyncKeyState(0xA0) & 0x8000) != 0) ||
-                ((GetAsyncKeyState(0xA1) & 0x8000) != 0);
+            shift = _activeModifiers.Contains(0x10) ||
+                    ((GetAsyncKeyState(0x10) & 0x8000) != 0) ||
+                    ((GetAsyncKeyState(0xA0) & 0x8000) != 0) ||
+                    ((GetAsyncKeyState(0xA1) & 0x8000) != 0);
 
-        win = ((GetAsyncKeyState(0x5B) & 0x8000) != 0) ||
-              ((GetAsyncKeyState(0x5C) & 0x8000) != 0);
+            win = _activeModifiers.Contains(0x5B) ||
+                  ((GetAsyncKeyState(0x5B) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(0x5C) & 0x8000) != 0);
+        }
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -298,6 +320,16 @@ public class KeyRemapManager : IDisposable
 
             if (isDown || isUp)
             {
+                uint normMod = NormalizeModifier(vkCode);
+                if (normMod != 0)
+                {
+                    lock (_lock)
+                    {
+                        if (isDown) _activeModifiers.Add(normMod);
+                        else if (isUp) _activeModifiers.Remove(normMod);
+                    }
+                }
+
                 // 1. RECORDING MODE (PowerToys: DetectShortcutUIBackend / DetectSingleRemapKeyUIBackend)
                 if (IsRecording)
                 {
@@ -319,13 +351,6 @@ public class KeyRemapManager : IDisposable
                         {
                             GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
                             bool hasModifiers = ctrl || alt || shift || win;
-
-                            // If ordinary typing key (A-Z, 0-9) pressed without ANY modifier:
-                            // Pass through so bare letter typing is not swallowed or bound as a global shortcut
-                            if (IsTypingKey(vkCode) && !hasModifiers)
-                            {
-                                return CallNextHookEx(_hookId, nCode, wParam, lParam);
-                            }
 
                             if (win)
                             {
@@ -353,6 +378,7 @@ public class KeyRemapManager : IDisposable
                                 IsRecording = false;
                                 _recordingCallback = null;
                                 _recordingCancelCallback = null;
+                                _activeModifiers.Clear();
                             }
 
                             RecordingEnded?.Invoke();

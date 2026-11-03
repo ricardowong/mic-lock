@@ -453,7 +453,7 @@
                         <!-- Key Display Pill -->
                         <Border Background="#0F172A" CornerRadius="6" Padding="10,5" Margin="0,0,8,0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="Key: " FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <TextBlock Text="Assigned: " FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding CurrentRemapBindingText}"
                                            FontSize="12"
                                            FontWeight="Bold"

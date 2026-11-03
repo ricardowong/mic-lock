@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](LICENSE)
 [![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-blue.svg)](https://microsoft.com/windows)
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com)
-[![Build Status](https://img.shields.io/badge/Tests-69%20Passed-brightgreen.svg)]()
+[![Build Status](https://img.shields.io/badge/Tests-70%20Passed-brightgreen.svg)]()
 
 ---
 

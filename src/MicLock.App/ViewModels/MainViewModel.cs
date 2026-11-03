@@ -23,6 +23,7 @@ public class KeyRemapActionItem
 public class RemapPresetItem
 {
     public string DisplayName { get; set; } = string.Empty;
+    public KeyMappingType MappingType { get; set; } = KeyMappingType.Shortcut;
     public uint VirtualKey { get; set; }
     public bool ModifiersCtrl { get; set; }
     public bool ModifiersAlt { get; set; }
@@ -101,16 +102,16 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         RemapPresets = new List<RemapPresetItem>
         {
             new RemapPresetItem { DisplayName = "Select a Preset...", VirtualKey = 0 },
-            new RemapPresetItem { DisplayName = "Keychron Mic Key (Win+C)", VirtualKey = 0x43, ModifiersWin = true, ComboText = "Win+C" },
-            new RemapPresetItem { DisplayName = "PowerToys Remap (Ctrl+Alt+M)", VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ComboText = "Ctrl+Alt+M" },
-            new RemapPresetItem { DisplayName = "Dedicated Hardware Mic Key", VirtualKey = 0x83, ComboText = "Dedicated Mic Key" },
-            new RemapPresetItem { DisplayName = "Standard Mute Shortcut (Ctrl+Shift+Alt+M)", VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+M" },
-            new RemapPresetItem { DisplayName = "Cycle Microphone Shortcut (Ctrl+Shift+Alt+D)", VirtualKey = 0x44, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+D" },
-            new RemapPresetItem { DisplayName = "Keyboard Mute Key", VirtualKey = 0xAD, ComboText = "Mute Key" },
-            new RemapPresetItem { DisplayName = "Pause / Break Key", VirtualKey = 0x13, ComboText = "Pause" },
-            new RemapPresetItem { DisplayName = "Scroll Lock Key", VirtualKey = 0x91, ComboText = "Scroll Lock" },
-            new RemapPresetItem { DisplayName = "Ctrl+Shift+Space", VirtualKey = 0x20, ModifiersCtrl = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Space" },
-            new RemapPresetItem { DisplayName = "Alt+` (Backquote)", VirtualKey = 0xC0, ModifiersAlt = true, ComboText = "Alt+`" }
+            new RemapPresetItem { DisplayName = "Keychron Mic Key (Win+C)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x43, ModifiersWin = true, ComboText = "Win+C" },
+            new RemapPresetItem { DisplayName = "PowerToys Remap (Ctrl+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ComboText = "Ctrl+Alt+M" },
+            new RemapPresetItem { DisplayName = "Dedicated Hardware Mic Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x83, ComboText = "Dedicated Mic Key" },
+            new RemapPresetItem { DisplayName = "Standard Mute Shortcut (Ctrl+Shift+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+M" },
+            new RemapPresetItem { DisplayName = "Cycle Microphone Shortcut (Ctrl+Shift+Alt+D)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x44, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+D" },
+            new RemapPresetItem { DisplayName = "Keyboard Mute Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0xAD, ComboText = "Mute Key" },
+            new RemapPresetItem { DisplayName = "Pause / Break Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x13, ComboText = "Pause" },
+            new RemapPresetItem { DisplayName = "Scroll Lock Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x91, ComboText = "Scroll Lock" },
+            new RemapPresetItem { DisplayName = "Ctrl+Shift+Space", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x20, ModifiersCtrl = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Space" },
+            new RemapPresetItem { DisplayName = "Alt+` (Backquote)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0xC0, ModifiersAlt = true, ComboText = "Alt+`" }
         };
 
         _selectedRemapAction = RemapActions[0];
@@ -322,7 +323,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public string RecordButtonText => _isRecordingKey ? "Recording... (Press key or Esc)" : "Record Key";
+    public string RecordButtonText => _isRecordingKey ? "Press key or shortcut..." : "Type Key / Shortcut";
 
     public RemapPresetItem? SelectedPreset
     {
@@ -354,6 +355,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
                     if (settingRule != null)
                     {
+                        settingRule.MappingType = rule.MappingType;
                         settingRule.VirtualKey = rule.VirtualKey;
                         settingRule.ModifiersCtrl = rule.ModifiersCtrl;
                         settingRule.ModifiersAlt = rule.ModifiersAlt;
@@ -393,6 +395,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var rule = new KeyBindingRule
         {
             Action = SelectedRemapAction.Action,
+            MappingType = KeyMappingType.SingleKey,
             VirtualKey = 0,
             ModifiersCtrl = false,
             ModifiersAlt = false,
@@ -407,6 +410,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
         if (settingRule != null)
         {
+            settingRule.MappingType = KeyMappingType.SingleKey;
             settingRule.VirtualKey = 0;
             settingRule.ModifiersCtrl = false;
             settingRule.ModifiersAlt = false;
@@ -428,6 +432,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var rule = new KeyBindingRule
         {
             Action = SelectedRemapAction.Action,
+            MappingType = preset.MappingType,
             VirtualKey = preset.VirtualKey,
             ModifiersCtrl = preset.ModifiersCtrl,
             ModifiersAlt = preset.ModifiersAlt,
@@ -442,6 +447,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
         if (settingRule != null)
         {
+            settingRule.MappingType = rule.MappingType;
             settingRule.VirtualKey = rule.VirtualKey;
             settingRule.ModifiersCtrl = rule.ModifiersCtrl;
             settingRule.ModifiersAlt = rule.ModifiersAlt;

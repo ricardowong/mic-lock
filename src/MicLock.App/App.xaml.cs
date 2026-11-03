@@ -17,6 +17,7 @@ public partial class App : Application
     private TrayIconController? _trayController;
     private MainViewModel? _viewModel;
     private MainWindow? _mainWindow;
+    private GlobalHotkeyManager? _hotkeyManager;
 
     public App()
     {
@@ -112,7 +113,13 @@ public partial class App : Application
                 _trayController.ShowVolumeRestoredNotification(args.PreviousPercent, args.RestoredPercent, args.DeviceName);
             };
 
-            // 6. Handle Initial Launch Arguments
+            // 6. Global Hotkey Engine (RegisterHotKey for Ctrl+Shift+Alt+M)
+            // Provides 100% reliable native OS message-loop hotkey support for both direct entry and PowerToys remap
+            _hotkeyManager = new GlobalHotkeyManager();
+            _hotkeyManager.HotkeyPressed += () => _viewModel?.ToggleMute();
+            _hotkeyManager.Register(GlobalHotkeyManager.MOD_CONTROL | GlobalHotkeyManager.MOD_SHIFT | GlobalHotkeyManager.MOD_ALT | GlobalHotkeyManager.MOD_NOREPEAT, 0x4D /* 'M' */);
+
+            // 7. Handle Initial Launch Arguments
             if (isToggleMuteReq)
             {
                 _viewModel.ToggleMute();
@@ -124,14 +131,14 @@ public partial class App : Application
 
             bool startMinimized = !forceShow && (isToggleMuteReq
                                   || isCycleDeviceReq
-                                  || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
-                                  || settingsManager.Current.StartMinimized);
+                                  || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)));
 
             Log($"startMinimized: {startMinimized}");
             if (!startMinimized)
             {
                 Log("Calling _mainWindow.Show()");
                 _mainWindow.Show();
+                _mainWindow.Activate();
             }
             Log("OnStartup finished successfully");
         }
@@ -178,6 +185,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _hotkeyManager?.Dispose();
         _ipcServer?.Dispose();
         _trayController?.Dispose();
         _viewModel?.Dispose();

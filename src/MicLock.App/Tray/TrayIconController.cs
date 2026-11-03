@@ -275,6 +275,14 @@ public class TrayIconController : IDisposable
         }
     }
 
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SW_RESTORE = 9;
+
     public void ShowMainWindow()
     {
         var app = Application.Current;
@@ -282,6 +290,9 @@ public class TrayIconController : IDisposable
 
         app.Dispatcher.Invoke(() =>
         {
+            var helper = new System.Windows.Interop.WindowInteropHelper(_mainWindow);
+            IntPtr hwnd = helper.EnsureHandle();
+
             if (!_mainWindow.IsVisible)
             {
                 _mainWindow.Show();
@@ -291,6 +302,9 @@ public class TrayIconController : IDisposable
             {
                 _mainWindow.WindowState = WindowState.Normal;
             }
+
+            ShowWindow(hwnd, SW_RESTORE);
+            SetForegroundWindow(hwnd);
 
             _mainWindow.Activate();
             _mainWindow.Focus();

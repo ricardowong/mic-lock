@@ -213,19 +213,6 @@ public class KeyRemapManagerTests
     }
 
     [Fact]
-    public void SendMenuMaskKey_And_SendMaskedWinUp_InvokeWithoutExceptions()
-    {
-        var ex1 = Record.Exception(() => KeyRemapManager.SendMenuMaskKey());
-        Assert.Null(ex1);
-
-        var ex2 = Record.Exception(() => KeyRemapManager.SendMaskedWinUp(0x5B));
-        Assert.Null(ex2);
-
-        var ex3 = Record.Exception(() => KeyRemapManager.SendOutputShortcut(ctrl: true, alt: true, shift: true, win: false, vk: 0x4D));
-        Assert.Null(ex3);
-    }
-
-    [Fact]
     public void KeyBindingRule_WinModifierShortcut_HasModifiersWinSet()
     {
         var winC = new KeyBindingRule

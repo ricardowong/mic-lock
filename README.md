@@ -52,7 +52,7 @@ Switch your system-wide default recording device with a keyboard shortcut, from 
 ## 📦 Download & Quick Start
 
 ### Option 1: Installer (Recommended)
-Download **`MicLock-Setup-v1.0.0.exe`** from [Releases](../../releases).
+Download **`MicLock-Setup-v1.1.0.exe`** from [Releases](../../releases).
 * Installs cleanly to `%LOCALAPPDATA%\Programs\MicLock`.
 * Adds optional desktop shortcut and automatic Windows startup.
 * Clean uninstaller included.

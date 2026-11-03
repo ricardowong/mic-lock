@@ -9,8 +9,8 @@ public class UpdateCheckResult
 {
     public bool Success { get; set; }
     public bool IsUpdateAvailable { get; set; }
-    public string CurrentVersion { get; set; } = "1.0.0";
-    public string LatestVersion { get; set; } = "1.0.0";
+    public string CurrentVersion { get; set; } = "1.1.0";
+    public string LatestVersion { get; set; } = "1.1.0";
     public string? ReleaseTitle { get; set; }
     public string? ReleaseNotes { get; set; }
     public string? HtmlUrl { get; set; }
@@ -33,7 +33,7 @@ public class GitHubUpdateChecker
         _httpClient.Timeout = TimeSpan.FromSeconds(6);
     }
 
-    public async Task<UpdateCheckResult> CheckForUpdatesAsync(string currentVersion = "1.0.0")
+    public async Task<UpdateCheckResult> CheckForUpdatesAsync(string currentVersion = "1.1.0")
     {
         var result = new UpdateCheckResult
         {

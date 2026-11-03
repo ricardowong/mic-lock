@@ -63,6 +63,10 @@ public partial class App : Application
                 {
                     AppIpcClient.SendCommand("CYCLE_DEVICE");
                 }
+                else if (e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)))
+                {
+                    Log("Not first instance and --minimized requested. Exiting silently without showing window.");
+                }
                 else if (forceShow)
                 {
                     AppIpcClient.SendCommand("SHOW");

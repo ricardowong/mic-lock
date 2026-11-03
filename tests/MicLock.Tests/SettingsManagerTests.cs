@@ -28,6 +28,7 @@ public class SettingsManagerTests : IDisposable
         Assert.Equal(100, manager.Current.TargetVolumePercent);
         Assert.True(manager.Current.IsLockEnabled);
         Assert.True(manager.Current.StartWithWindows);
+        Assert.True(manager.Current.StartMinimized);
         Assert.Null(manager.Current.SelectedDeviceId);
     }
 

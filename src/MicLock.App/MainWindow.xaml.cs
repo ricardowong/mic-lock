@@ -22,6 +22,15 @@ public partial class MainWindow : Window
         Close();
     }
 
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized)
+        {
+            Hide();
+        }
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!_isExplicitExit)

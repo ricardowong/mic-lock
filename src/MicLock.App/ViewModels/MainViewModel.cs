@@ -575,7 +575,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get
         {
             var ver = typeof(MainViewModel).Assembly.GetName().Version;
-            return ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "1.1.0";
+            return ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "1.2.0";
         }
     }
 
@@ -616,8 +616,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 LatestReleaseUrl = result.HtmlUrl;
 
                 var choice = System.Windows.MessageBox.Show(
-                    $"A new version of MicAnchor is available!\n\nLatest: v{result.LatestVersion} (Current: v{result.CurrentVersion})\n\n{result.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
-                    "MicAnchor Update Available",
+                    $"A new version of MicLock is available!\n\nLatest: v{result.LatestVersion} (Current: v{result.CurrentVersion})\n\n{result.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
+                    "MicLock Update Available",
                     System.Windows.MessageBoxButton.YesNo,
                     System.Windows.MessageBoxImage.Information);
 
@@ -630,8 +630,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 UpdateStatusText = $"v{result.CurrentVersion} (Up to date)";
                 System.Windows.MessageBox.Show(
-                    $"You are using the latest version of MicAnchor (v{result.CurrentVersion}).",
-                    "MicAnchor Up to Date",
+                    $"You are using the latest version of MicLock (v{result.CurrentVersion}).",
+                    "MicLock Up to Date",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Information);
             }
@@ -753,8 +753,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         : new SolidColorBrush(System.Windows.Media.Color.FromRgb(226, 232, 240)); // Slate 200
 
     public string StatusTooltip => _isLocked
-        ? $"MicAnchor: Locked at {_targetVolumePercent}% | {_audioEngine.ActiveDevice?.DisplayName ?? "Default Mic"}"
-        : "MicAnchor: Protection Paused";
+        ? $"MicLock: Locked at {_targetVolumePercent}% | {_audioEngine.ActiveDevice?.DisplayName ?? "Default Mic"}"
+        : "MicLock: Protection Paused";
 
     public void RefreshDevices()
     {

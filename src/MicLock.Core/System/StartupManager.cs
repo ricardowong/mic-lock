@@ -8,8 +8,8 @@ public class StartupManager
 {
     private const string RunRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
-    public const string DefaultAppName = "MicAnchor";
-    public const string LegacyAppName = "MicLock";
+    public const string DefaultAppName = "MicLock";
+    public const string LegacyAppName = "MicAnchor";
     public const string DefaultArguments = "--minimized";
 
     private static readonly byte[] StartupEnabledBytes = new byte[] { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -43,7 +43,7 @@ public class StartupManager
             using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
             if (key == null) return false;
 
-            // Clean up legacy "MicLock" duplicate entry to prevent double-launch
+            // Clean up legacy "MicAnchor" duplicate entry to prevent double-launch
             if (appName == DefaultAppName && key.GetValue(LegacyAppName) != null)
             {
                 key.DeleteValue(LegacyAppName, throwOnMissingValue: false);

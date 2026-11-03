@@ -204,4 +204,29 @@ public class KeyRemapManagerTests
         Assert.Equal(KeyMappingType.SingleKey, hardwareKey.MappingType);
         Assert.False(hardwareKey.HasModifiers);
     }
+
+    [Fact]
+    public void SuppressStartMenu_InvokesWithoutExceptions()
+    {
+        // Verified PowerToys VK__none_ (0xFF) Start Menu dummy key suppression method
+        var ex = Record.Exception(() => KeyRemapManager.SuppressStartMenu());
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void KeyBindingRule_WinModifierShortcut_HasModifiersWinSet()
+    {
+        var winC = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.Shortcut,
+            VirtualKey = 0x43, // 'C'
+            ModifiersWin = true,
+            DisplayText = "Win+C"
+        };
+
+        Assert.True(winC.ModifiersWin);
+        Assert.True(winC.HasModifiers);
+        Assert.Equal("Win+C", winC.DisplayText);
+    }
 }

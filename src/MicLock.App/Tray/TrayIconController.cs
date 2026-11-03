@@ -105,7 +105,7 @@ public class TrayIconController : IDisposable
         };
         _startupItem.Click += (s, e) => _viewModel.StartWithWindows = _startupItem.Checked;
 
-        _exitItem = new ToolStripMenuItem("Exit MicAnchor");
+        _exitItem = new ToolStripMenuItem("Exit MicLock");
         _exitItem.Click += (s, e) =>
         {
             if (_notifyIcon != null)
@@ -123,8 +123,8 @@ public class TrayIconController : IDisposable
             if (res.IsUpdateAvailable)
             {
                 var choice = System.Windows.Forms.MessageBox.Show(
-                    $"A new version of MicAnchor is available!\n\nLatest: v{res.LatestVersion} (Current: v{res.CurrentVersion})\n\n{res.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
-                    "MicAnchor Update Available",
+                    $"A new version of MicLock is available!\n\nLatest: v{res.LatestVersion} (Current: v{res.CurrentVersion})\n\n{res.ReleaseTitle}\n\nWould you like to open the GitHub releases page to download it?",
+                    "MicLock Update Available",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Information);
 
@@ -136,8 +136,8 @@ public class TrayIconController : IDisposable
             else if (res.Success)
             {
                 System.Windows.Forms.MessageBox.Show(
-                    $"You are using the latest version of MicAnchor (v{res.CurrentVersion}).",
-                    "MicAnchor Up to Date",
+                    $"You are using the latest version of MicLock (v{res.CurrentVersion}).",
+                    "MicLock Up to Date",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
@@ -303,7 +303,7 @@ public class TrayIconController : IDisposable
 
         _notifyIcon.ShowBalloonTip(
             2000,
-            "MicAnchor Active",
+            "MicLock Active",
             $"Reverted volume from {previousPercent}% to {restoredPercent}%\n({deviceName})",
             ToolTipIcon.Info);
     }

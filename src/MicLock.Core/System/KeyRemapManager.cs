@@ -20,7 +20,9 @@ public class KeyRemapManager : IDisposable
 
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const uint VK_DUMMY = 0xFF; // VK__none_ (PowerToys & AutoHotkey Start Menu suppression key)
+    private const uint VK_MENU_MASK = 0x11; // VK_CONTROL (AutoHotkey standard menu mask key)
+    private const ushort SCAN_MENU_MASK = 0x1D; // Scan code for Left Control
+    private const uint VK_DUMMY = 0xFF; // Fallback dummy key
     private const uint DUMMY_KEY_FLAG = 0x2000;
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -237,6 +239,11 @@ public class KeyRemapManager : IDisposable
 
     public static void SuppressStartMenu()
     {
+        SendMenuMaskKey();
+    }
+
+    public static void SendMenuMaskKey()
+    {
         try
         {
             var inputs = new INPUT[2];
@@ -247,8 +254,8 @@ public class KeyRemapManager : IDisposable
                 {
                     ki = new KEYBDINPUT
                     {
-                        wVk = (ushort)VK_DUMMY,
-                        wScan = 0,
+                        wVk = (ushort)VK_MENU_MASK,
+                        wScan = SCAN_MENU_MASK,
                         dwFlags = 0, // Key down
                         time = 0,
                         dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
@@ -262,7 +269,63 @@ public class KeyRemapManager : IDisposable
                 {
                     ki = new KEYBDINPUT
                     {
-                        wVk = (ushort)VK_DUMMY,
+                        wVk = (ushort)VK_MENU_MASK,
+                        wScan = SCAN_MENU_MASK,
+                        dwFlags = KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        }
+        catch { }
+    }
+
+    public static void SendMaskedWinUp(uint winVk)
+    {
+        try
+        {
+            var inputs = new INPUT[3];
+            inputs[0] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)VK_MENU_MASK,
+                        wScan = SCAN_MENU_MASK,
+                        dwFlags = 0, // Key down
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            inputs[1] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)VK_MENU_MASK,
+                        wScan = SCAN_MENU_MASK,
+                        dwFlags = KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            inputs[2] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)winVk,
                         wScan = 0,
                         dwFlags = KEYEVENTF_KEYUP,
                         time = 0,
@@ -274,6 +337,56 @@ public class KeyRemapManager : IDisposable
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         }
         catch { }
+    }
+
+    public static void SendOutputShortcut(bool ctrl, bool alt, bool shift, bool win, uint vk)
+    {
+        try
+        {
+            var list = new List<INPUT>();
+
+            if (ctrl) AddKeyInput(list, 0x11, false);
+            if (alt) AddKeyInput(list, 0x12, false);
+            if (shift) AddKeyInput(list, 0x10, false);
+            if (win) AddKeyInput(list, 0x5B, false);
+
+            if (vk != 0)
+            {
+                AddKeyInput(list, (ushort)vk, false);
+                AddKeyInput(list, (ushort)vk, true);
+            }
+
+            if (win) AddKeyInput(list, 0x5B, true);
+            if (shift) AddKeyInput(list, 0x10, true);
+            if (alt) AddKeyInput(list, 0x12, true);
+            if (ctrl) AddKeyInput(list, 0x11, true);
+
+            if (list.Count > 0)
+            {
+                var arr = list.ToArray();
+                SendInput((uint)arr.Length, arr, Marshal.SizeOf<INPUT>());
+            }
+        }
+        catch { }
+    }
+
+    private static void AddKeyInput(List<INPUT> list, ushort vk, bool isUp)
+    {
+        list.Add(new INPUT
+        {
+            type = INPUT_KEYBOARD,
+            u = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = vk,
+                    wScan = 0,
+                    dwFlags = isUp ? KEYEVENTF_KEYUP : 0,
+                    time = 0,
+                    dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                }
+            }
+        });
     }
 
     private void GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, uint hookFlags = 0)
@@ -334,7 +447,8 @@ public class KeyRemapManager : IDisposable
                 }
 
                 // If Win key is released and a Win-modified shortcut or recording was intercepted,
-                // suppress the Windows Start Menu from popping up!
+                // suppress the Windows Start Menu from popping up by swallowing the physical Win key-up
+                // and dispatching a masked dummy sequence so Explorer never opens the Start Menu!
                 if (isUp && (vkCode == 0x5B || vkCode == 0x5C))
                 {
                     bool suppress;
@@ -346,7 +460,8 @@ public class KeyRemapManager : IDisposable
 
                     if (suppress)
                     {
-                        SuppressStartMenu();
+                        SendMaskedWinUp(vkCode);
+                        return (IntPtr)1; // SWALLOW physical Win key-up so Windows Explorer never sees bare keyup
                     }
                 }
 

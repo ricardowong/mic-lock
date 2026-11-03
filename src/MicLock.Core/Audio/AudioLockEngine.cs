@@ -238,6 +238,11 @@ public class AudioLockEngine : IAudioLockEngine
 
         if (!IsLocked || _isRevertingVolume) return;
 
+        // CRITICAL FIX: Do NOT revert volume if the microphone is currently muted!
+        // In Windows CoreAudio, setting MasterVolumeLevelScalar while muted resets Mute to false.
+        // Additionally, some audio drivers report 0% volume when muted, causing false revert loops.
+        if (data.Muted || _lastKnownMute) return;
+
         if (currentPercent != TargetVolumePercent)
         {
             lock (_syncLock)
@@ -274,7 +279,12 @@ public class AudioLockEngine : IAudioLockEngine
                 _isRevertingVolume = true;
                 try
                 {
+                    bool wasMuted = _activeEndpointVolume.Mute;
                     _activeEndpointVolume.MasterVolumeLevelScalar = percent / 100f;
+                    if (wasMuted)
+                    {
+                        _activeEndpointVolume.Mute = true;
+                    }
                     VolumeChanged?.Invoke(this, percent);
                 }
                 finally
@@ -305,6 +315,7 @@ public class AudioLockEngine : IAudioLockEngine
         {
             if (_activeEndpointVolume != null)
             {
+                _isRevertingVolume = true;
                 try
                 {
                     _activeEndpointVolume.Mute = mute;
@@ -315,6 +326,10 @@ public class AudioLockEngine : IAudioLockEngine
                 catch (Exception ex)
                 {
                     EmitLog(LogLevel.Error, $"Failed to set mute: {ex.Message}");
+                }
+                finally
+                {
+                    _isRevertingVolume = false;
                 }
             }
         }

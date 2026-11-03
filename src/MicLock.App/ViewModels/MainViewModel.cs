@@ -482,6 +482,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     if (state == KeyPressState.Down)
                     {
                         ToggleMute();
+                        // Synthesize output shortcut (Ctrl+Shift+Alt+M) with DUMMY_KEY_FLAG so external listeners (SoundSwitch, Discord, Teams) also receive it
+                        KeyRemapManager.SendOutputShortcut(ctrl: true, alt: true, shift: true, win: false, vk: 0x4D);
                     }
                     break;
 

@@ -44,6 +44,18 @@ public class AppSettings
                 IsKeyRemapEnabled = true;
             }
 
+            foreach (var rule in KeyBindings)
+            {
+                if (rule.HasModifiers)
+                {
+                    rule.MappingType = KeyMappingType.Shortcut;
+                }
+                else if (rule.VirtualKey != 0)
+                {
+                    rule.MappingType = KeyMappingType.SingleKey;
+                }
+            }
+
             // Ensure all known actions exist in the bindings list
             var existingActions = new HashSet<KeyRemapAction>(KeyBindings.Select(b => b.Action));
             foreach (KeyRemapAction action in Enum.GetValues<KeyRemapAction>())

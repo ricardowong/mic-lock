@@ -93,14 +93,7 @@ public class KeyRemapManager : IDisposable
 
             try
             {
-                using var curProcess = Process.GetCurrentProcess();
-                using var curModule = curProcess.MainModule;
-                IntPtr hMod = curModule != null ? GetModuleHandle(curModule.ModuleName) : IntPtr.Zero;
-                if (hMod == IntPtr.Zero)
-                {
-                    hMod = GetModuleHandle(null);
-                }
-
+                IntPtr hMod = GetModuleHandle(null);
                 _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _hookCallbackDelegate, hMod, 0);
             }
             catch (Exception)
@@ -160,6 +153,7 @@ public class KeyRemapManager : IDisposable
             var existing = Bindings.FirstOrDefault(b => b.Action == rule.Action);
             if (existing != null)
             {
+                existing.MappingType = rule.MappingType;
                 existing.VirtualKey = rule.VirtualKey;
                 existing.ModifiersCtrl = rule.ModifiersCtrl;
                 existing.ModifiersAlt = rule.ModifiersAlt;
@@ -272,7 +266,7 @@ public class KeyRemapManager : IDisposable
                     }
                 }
 
-                // 1. RECORDING MODE
+                // 1. RECORDING MODE (PowerToys: DetectShortcutUIBackend / DetectSingleRemapKeyUIBackend)
                 if (IsRecording)
                 {
                     if (isDown)
@@ -292,12 +286,12 @@ public class KeyRemapManager : IDisposable
                         if (!IsModifierKey(vkCode))
                         {
                             GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
+                            bool hasModifiers = ctrl || alt || shift || win;
 
-                            // SAFETY GUARD: Ordinary letters/numbers/typing keys (A-Z, 0-9) MUST have at least one modifier
-                            // to prevent accidentally hijacking normal typing!
-                            if (IsTypingKey(vkCode) && !ctrl && !alt && !shift && !win)
+                            // If ordinary typing key (A-Z, 0-9) pressed without ANY modifier:
+                            // Pass through so bare letter typing is not swallowed or bound as a global shortcut
+                            if (IsTypingKey(vkCode) && !hasModifiers)
                             {
-                                // Pass through bare letters while recording so user is not blocked
                                 return CallNextHookEx(_hookId, nCode, wParam, lParam);
                             }
 
@@ -308,8 +302,11 @@ public class KeyRemapManager : IDisposable
                                 ModifiersAlt = alt,
                                 ModifiersShift = shift,
                                 ModifiersWin = win,
+                                MappingType = hasModifiers ? KeyMappingType.Shortcut : KeyMappingType.SingleKey,
                                 SuppressOriginalKey = true,
-                                DisplayText = FormatKeyCombination(vkCode, ctrl, alt, shift, win)
+                                DisplayText = hasModifiers
+                                    ? FormatKeyCombination(vkCode, ctrl, alt, shift, win)
+                                    : FormatKeyName(vkCode)
                             };
 
                             Action<KeyBindingRule>? callback;
@@ -333,38 +330,52 @@ public class KeyRemapManager : IDisposable
                     return (IntPtr)1;
                 }
 
-                // 2. NORMAL EXECUTION MODE
+                // 2. NORMAL EXECUTION MODE (PowerToys: HandleSingleKeyRemapEvent + HandleShortcutRemapEvent)
                 if (IsRemapEnabled)
                 {
-                    GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
-                    bool hasModifiers = ctrl || alt || shift || win;
-
-                    // SAFETY GUARD: If this is an ordinary typing key and no modifiers are down,
-                    // it CANNOT match any legitimate global hotkey. Pass through immediately!
-                    if (IsTypingKey(vkCode) && !hasModifiers)
-                    {
-                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
-                    }
-
                     KeyBindingRule? matchedRule = null;
+
+                    // Stage 1: Single Key Remaps (PowerToys HandleSingleKeyRemapEvent)
+                    // Checks if incoming physical key matches a dedicated single key remap (e.g. F20, dedicated mic key, Pause)
                     lock (_lock)
                     {
                         foreach (var rule in Bindings)
                         {
-                            if (rule.VirtualKey == vkCode &&
-                                rule.ModifiersCtrl == ctrl &&
-                                rule.ModifiersAlt == alt &&
-                                rule.ModifiersShift == shift &&
-                                rule.ModifiersWin == win)
+                            if (rule.MappingType == KeyMappingType.SingleKey &&
+                                rule.VirtualKey == vkCode &&
+                                !rule.IsEmpty)
                             {
-                                // Refuse to match bare typing keys
-                                if (IsTypingKey(rule.VirtualKey) && !rule.HasModifiers)
-                                {
-                                    continue;
-                                }
-
                                 matchedRule = rule;
                                 break;
+                            }
+                        }
+                    }
+
+                    // Stage 2: Shortcut Remaps (PowerToys HandleShortcutRemapEvent)
+                    // Checks if incoming key + active modifiers match a shortcut remap (e.g. Win+C, Ctrl+Alt+M)
+                    if (matchedRule == null)
+                    {
+                        GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
+                        bool hasModifiers = ctrl || alt || shift || win;
+
+                        if (hasModifiers)
+                        {
+                            lock (_lock)
+                            {
+                                foreach (var rule in Bindings)
+                                {
+                                    if (rule.MappingType == KeyMappingType.Shortcut &&
+                                        rule.VirtualKey == vkCode &&
+                                        rule.ModifiersCtrl == ctrl &&
+                                        rule.ModifiersAlt == alt &&
+                                        rule.ModifiersShift == shift &&
+                                        rule.ModifiersWin == win &&
+                                        !rule.IsEmpty)
+                                    {
+                                        matchedRule = rule;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }

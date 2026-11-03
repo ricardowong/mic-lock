@@ -131,4 +131,77 @@ public class KeyRemapManagerTests
         Assert.Equal(0x83u, retrieved.VirtualKey);
         Assert.Equal("Dedicated Mic Key", retrieved.DisplayText);
     }
+
+    [Fact]
+    public void TwoStageArchitecture_SingleKeyVsShortcut_DistinguishesCorrectly()
+    {
+        var singleKeyRule = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.SingleKey,
+            VirtualKey = 0x83, // Dedicated Mic Key
+            SuppressOriginalKey = true,
+            DisplayText = "Dedicated Mic Key"
+        };
+
+        var shortcutRule = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.Shortcut,
+            VirtualKey = 0x4D, // 'M'
+            ModifiersCtrl = true,
+            ModifiersAlt = true,
+            SuppressOriginalKey = true,
+            DisplayText = "Ctrl+Alt+M"
+        };
+
+        Assert.Equal(KeyMappingType.SingleKey, singleKeyRule.MappingType);
+        Assert.False(singleKeyRule.HasModifiers);
+
+        Assert.Equal(KeyMappingType.Shortcut, shortcutRule.MappingType);
+        Assert.True(shortcutRule.HasModifiers);
+        Assert.True(KeyRemapManager.IsTypingKey(shortcutRule.VirtualKey));
+    }
+
+    [Fact]
+    public void KeychronAndPowerToys_PresetCombinations_HaveCorrectMappingTypes()
+    {
+        // Keychron factory mic key produces Win+C (Shortcut)
+        var keychron = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.Shortcut,
+            VirtualKey = 0x43, // 'C'
+            ModifiersWin = true,
+            DisplayText = "Win+C"
+        };
+        Assert.Equal(KeyMappingType.Shortcut, keychron.MappingType);
+        Assert.True(keychron.ModifiersWin);
+        Assert.False(keychron.ModifiersCtrl);
+
+        // PowerToys remap produces Ctrl+Alt+M (Shortcut)
+        var powerToys = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.Shortcut,
+            VirtualKey = 0x4D, // 'M'
+            ModifiersCtrl = true,
+            ModifiersAlt = true,
+            DisplayText = "Ctrl+Alt+M"
+        };
+        Assert.Equal(KeyMappingType.Shortcut, powerToys.MappingType);
+        Assert.True(powerToys.ModifiersCtrl);
+        Assert.True(powerToys.ModifiersAlt);
+
+        // Hardware Dedicated Mic Key produces 0x83 (SingleKey)
+        var hardwareKey = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.SingleKey,
+            VirtualKey = 0x83,
+            DisplayText = "Dedicated Mic Key"
+        };
+        Assert.Equal(KeyMappingType.SingleKey, hardwareKey.MappingType);
+        Assert.False(hardwareKey.HasModifiers);
+    }
 }

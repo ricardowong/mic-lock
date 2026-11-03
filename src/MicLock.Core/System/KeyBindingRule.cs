@@ -9,16 +9,23 @@ public enum KeyRemapAction
     LockVolume = 4
 }
 
+public enum KeyMappingType
+{
+    SingleKey = 0,
+    Shortcut = 1
+}
+
 public class KeyBindingRule
 {
     public KeyRemapAction Action { get; set; } = KeyRemapAction.ToggleMute;
-    public uint VirtualKey { get; set; } = 0x4D; // VK_M
-    public bool ModifiersCtrl { get; set; } = true;
-    public bool ModifiersAlt { get; set; } = true;
-    public bool ModifiersShift { get; set; } = true;
+    public KeyMappingType MappingType { get; set; } = KeyMappingType.SingleKey;
+    public uint VirtualKey { get; set; } = 0;
+    public bool ModifiersCtrl { get; set; } = false;
+    public bool ModifiersAlt { get; set; } = false;
+    public bool ModifiersShift { get; set; } = false;
     public bool ModifiersWin { get; set; } = false;
     public bool SuppressOriginalKey { get; set; } = true;
-    public string DisplayText { get; set; } = "Ctrl+Shift+Alt+M";
+    public string DisplayText { get; set; } = "None";
 
     public bool IsEmpty => VirtualKey == 0;
     public bool HasModifiers => ModifiersCtrl || ModifiersAlt || ModifiersShift || ModifiersWin;
@@ -28,6 +35,7 @@ public class KeyBindingRule
         return new KeyBindingRule
         {
             Action = Action,
+            MappingType = MappingType,
             VirtualKey = VirtualKey,
             ModifiersCtrl = ModifiersCtrl,
             ModifiersAlt = ModifiersAlt,
@@ -45,6 +53,7 @@ public class KeyBindingRule
             new KeyBindingRule
             {
                 Action = KeyRemapAction.ToggleMute,
+                MappingType = KeyMappingType.Shortcut,
                 VirtualKey = 0x4D, // 'M'
                 ModifiersCtrl = true,
                 ModifiersAlt = true,
@@ -56,6 +65,7 @@ public class KeyBindingRule
             new KeyBindingRule
             {
                 Action = KeyRemapAction.CycleRecordingDevice,
+                MappingType = KeyMappingType.Shortcut,
                 VirtualKey = 0x44, // 'D'
                 ModifiersCtrl = true,
                 ModifiersAlt = true,
@@ -67,6 +77,7 @@ public class KeyBindingRule
             new KeyBindingRule
             {
                 Action = KeyRemapAction.LockVolume,
+                MappingType = KeyMappingType.Shortcut,
                 VirtualKey = 0x4C, // 'L'
                 ModifiersCtrl = true,
                 ModifiersAlt = true,

@@ -24,9 +24,27 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private NativeWindow? _wheelHook;
 
+    private Icon _activeIcon = SystemIcons.Application;
+    private Icon _mutedIcon = SystemIcons.Application;
+
     public App()
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+    }
+
+    private static Icon LoadIcon(string iconName, Icon fallbackIcon)
+    {
+        try
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string iconPath = Path.Combine(baseDir, "Assets", iconName);
+            if (File.Exists(iconPath)) return new Icon(iconPath);
+
+            string altPath = Path.Combine(baseDir, iconName);
+            if (File.Exists(altPath)) return new Icon(altPath);
+        }
+        catch { }
+        return fallbackIcon;
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -124,9 +142,12 @@ public partial class App : Application
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(exitItem);
 
+        _activeIcon = LoadIcon("mic-active.ico", SystemIcons.Application);
+        _mutedIcon = LoadIcon("mic-muted.ico", SystemIcons.Application);
+
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Shield,
+            Icon = _audioEngine?.IsMuted == true ? _mutedIcon : _activeIcon,
             Text = "MicMute: Active",
             ContextMenuStrip = contextMenu,
             Visible = true
@@ -178,6 +199,7 @@ public partial class App : Application
     {
         if (_notifyIcon != null)
         {
+            _notifyIcon.Icon = isMuted ? _mutedIcon : _activeIcon;
             _notifyIcon.Text = isMuted ? "MicMute: Muted" : "MicMute: Active";
         }
     }

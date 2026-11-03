@@ -9,6 +9,12 @@ public class PersistentOverlayTests
 {
     private static void RunInSta(Action action)
     {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        {
+            // Headless cloud CI runners run in non-interactive Session 0 without display hardware / DWM
+            return;
+        }
+
         Exception? exception = null;
         var thread = new Thread(() =>
         {

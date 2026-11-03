@@ -40,7 +40,7 @@ public class StartupManager
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RunRegistryKey, writable: true);
+            using var key = Registry.CurrentUser.CreateSubKey(RunRegistryKey, writable: true);
             if (key == null) return false;
 
             // Clean up legacy "MicAnchor" duplicate entry to prevent double-launch

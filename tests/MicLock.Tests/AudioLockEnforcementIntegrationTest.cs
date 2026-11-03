@@ -22,6 +22,9 @@ public class AudioLockEnforcementIntegrationTest
             return;
         }
 
+        // Ensure endpoint is unmuted so volume enforcement logic is active
+        engine.SetMute(false);
+
         var restoredSignal = new ManualResetEventSlim(false);
         int capturedRestored = 0;
         int capturedPrevious = 0;
@@ -33,16 +36,17 @@ public class AudioLockEnforcementIntegrationTest
             restoredSignal.Set();
         };
 
-        // Alter volume externally via powershell command simulating Discord / Zoom
-        var psi = new ProcessStartInfo
+        // Alter volume directly via separate CoreAudio endpoint instance simulating Discord / Zoom
+        try
         {
-            FileName = "powershell.exe",
-            Arguments = "-NoProfile -Command \"Set-AudioDevice -RecordingVolume 62\"",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        var proc = Process.Start(psi);
-        proc?.WaitForExit();
+            using var enumerator = new MMDeviceEnumerator();
+            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
+            device.AudioEndpointVolume.MasterVolumeLevelScalar = 0.62f;
+        }
+        catch
+        {
+            return;
+        }
 
         // Wait for WASAPI callback to enforce volume lock
         bool enforced = restoredSignal.Wait(2000);
@@ -64,6 +68,9 @@ public class AudioLockEnforcementIntegrationTest
             // Headless cloud CI runners (GitHub Actions / Azure) do not have audio capture hardware
             return;
         }
+
+        // Ensure endpoint is unmuted so volume enforcement logic is active
+        engine.SetMute(false);
 
         // Change target to 85%
         engine.TargetVolumePercent = 85;

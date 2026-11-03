@@ -23,7 +23,10 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Setup Inno Setup
-        uses: Brahgn/actions-inno-setup@v1
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress
+          "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Restore Dependencies
         run: dotnet restore MicLock.sln
@@ -31,9 +34,19 @@ jobs:
       - name: Run Unit & Integration Tests
         run: dotnet test MicLock.sln --configuration Release --verbosity normal
 
-      - name: Publish Single-File Executable
+      - name: Publish MicLock Executable
         run: >
           dotnet publish src/MicLock.App/MicLock.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o dist/win-x64
+
+      - name: Publish MicMute Executable
+        run: >
+          dotnet publish src/MicMute.App/MicMute.App.csproj
           -c Release
           -r win-x64
           --self-contained false
@@ -47,13 +60,14 @@ jobs:
       - name: Package Portable Zip
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/win-x64/* -DestinationPath dist/installer/MicLock-Portable-win-x64.zip
+          New-Item -ItemType Directory -Force -Path dist/installer
+          Compress-Archive -Path dist/win-x64/* -DestinationPath dist/installer/MicAnchor-Portable-win-x64.zip -Force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            dist/installer/MicLock-Setup-*.exe
-            dist/installer/MicLock-Portable-win-x64.zip
+            dist/installer/MicAnchor-Setup-*.exe
+            dist/installer/MicAnchor-Portable-win-x64.zip
           generate_release_notes: true

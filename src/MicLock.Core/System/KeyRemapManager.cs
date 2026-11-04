@@ -19,6 +19,7 @@ public class KeyRemapManager : IDisposable
     private const uint LLKHF_ALTDOWN = 0x20;
 
     private const uint INPUT_KEYBOARD = 1;
+    private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint VK_MENU_MASK = 0xE8; // AutoHotkey / Windows Shell menu mask key (clears g_fWinKeyPressed in explorer.exe)
     private const uint VK_DUMMY = 0xFF;     // PowerToys dummy key
@@ -389,8 +390,33 @@ public class KeyRemapManager : IDisposable
         catch { }
     }
 
+    public static bool IsExtendedKey(ushort vk)
+    {
+        return vk switch
+        {
+            0x5B or 0x5C => true, // VK_LWIN, VK_RWIN
+            0x5D => true,         // VK_APPS
+            0xA3 => true,         // VK_RCONTROL
+            0xA5 => true,         // VK_RMENU
+            0x2D or 0x2E => true, // VK_INSERT, VK_DELETE
+            0x24 or 0x23 => true, // VK_HOME, VK_END
+            0x21 or 0x22 => true, // VK_PRIOR, VK_NEXT
+            0x25 or 0x26 or 0x27 or 0x28 => true, // VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN
+            0x6F => true,         // VK_DIVIDE
+            0x90 => true,         // VK_NUMLOCK
+            0x2C => true,         // VK_SNAPSHOT
+            _ => false
+        };
+    }
+
     private static INPUT CreateKeyInput(ushort vk, uint dwFlags, uint extraInfo)
     {
+        uint flags = dwFlags;
+        if (IsExtendedKey(vk))
+        {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+
         return new INPUT
         {
             type = INPUT_KEYBOARD,
@@ -400,7 +426,7 @@ public class KeyRemapManager : IDisposable
                 {
                     wVk = vk,
                     wScan = (ushort)MapVirtualKey(vk, 0),
-                    dwFlags = dwFlags,
+                    dwFlags = flags,
                     time = 0,
                     dwExtraInfo = (UIntPtr)extraInfo
                 }
@@ -575,7 +601,12 @@ public class KeyRemapManager : IDisposable
                         {
                             SuppressStartMenu();
                         }
-                        return (IntPtr)1; // Swallow keyup during capture
+                        if (normMod != 0)
+                        {
+                            // Never swallow modifier releases during capture so OS modifier state remains clean
+                            return CallNextHookEx(_hookId, nCode, wParam, lParam);
+                        }
+                        return (IntPtr)1; // Swallow non-modifier keyup during capture
                     }
                 }
 
@@ -589,15 +620,16 @@ public class KeyRemapManager : IDisposable
                     {
                         if (isUp)
                         {
-                            // POWERTOYS WIN-KEY SUPPRESSION ESSENCE:
-                            // If a shortcut using Win was invoked, swallow the physical Win keyup completely!
-                            // This ensures Windows Explorer NEVER sees a lone Win key release, preventing Start Menu popups 100%!
+                            // WIN-KEY SUPPRESSION & UNSTUCK MODIFIER INVARIANT:
+                            // If a shortcut using Win was invoked, mask the Start Menu right before forwarding Win keyup.
+                            // VK_MENU_MASK (0xE8) ensures Windows Explorer clears g_fWinKeyPressed, preventing Start Menu popups 100%.
+                            // CRITICAL: We forward the physical Win keyup to Windows OS (NEVER swallow it!).
+                            // Swallowing physical modifier keyups is what traps VK_LWIN in Windows OS keystate table.
                             if (_suppressNextWinKeyUp && (vkCode == 0x5B || vkCode == 0x5C))
                             {
                                 _suppressNextWinKeyUp = false;
                                 SuppressStartMenu();
-                                LogMessage?.Invoke("[Remap] Swallowed physical Win keyup to suppress Windows Start Menu.");
-                                return (IntPtr)1; // SWALLOW PHYSICAL WIN KEYUP!
+                                LogMessage?.Invoke("[Remap] Masked Start Menu before forwarding physical Win keyup.");
                             }
 
                             lock (_lock)
@@ -678,9 +710,10 @@ public class KeyRemapManager : IDisposable
 
                                 // In PowerToys HandleShortcutRemapEvent:
                                 // Inject synthetic Win key-up immediately so Windows OS modifier state clears Win!
-                                var winRelease = new INPUT[1];
+                                var winRelease = new INPUT[2];
                                 winRelease[0] = CreateKeyInput(0x5B, KEYEVENTF_KEYUP, DUMMY_KEY_FLAG);
-                                SendInput(1, winRelease, Marshal.SizeOf<INPUT>());
+                                winRelease[1] = CreateKeyInput(0x5C, KEYEVENTF_KEYUP, DUMMY_KEY_FLAG);
+                                SendInput(2, winRelease, Marshal.SizeOf<INPUT>());
                             }
 
                             // Inject remapped keystrokes if configured

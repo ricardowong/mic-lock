@@ -344,4 +344,23 @@ public class KeyRemapManagerTests
         var ex = Record.Exception(() => KeyRemapManager.InjectShortcut(0x4D, ctrl: true, alt: true, shift: true, win: false));
         Assert.Null(ex);
     }
+
+    [Theory]
+    [InlineData(0x5Bu, true)]  // LWin
+    [InlineData(0x5Cu, true)]  // RWin
+    [InlineData(0x5Du, true)]  // Apps
+    [InlineData(0xA3u, true)]  // RControl
+    [InlineData(0xA5u, true)]  // RMenu (AltGr)
+    [InlineData(0x2Du, true)]  // Insert
+    [InlineData(0x2Eu, true)]  // Delete
+    [InlineData(0x25u, true)]  // Left Arrow
+    [InlineData(0x43u, false)] // 'C'
+    [InlineData(0x4Du, false)] // 'M'
+    [InlineData(0x11u, false)] // Ctrl
+    [InlineData(0x10u, false)] // Shift
+    public void IsExtendedKey_IdentifiesExtendedKeysAccurately(uint vk, bool expected)
+    {
+        bool actual = KeyRemapManager.IsExtendedKey((ushort)vk);
+        Assert.Equal(expected, actual);
+    }
 }

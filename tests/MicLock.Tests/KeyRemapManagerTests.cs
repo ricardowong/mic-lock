@@ -47,7 +47,7 @@ public class KeyRemapManagerTests
 
         // Win+C combination for Keychron
         string combo7 = KeyRemapManager.FormatKeyCombination(0x43, ctrl: false, alt: false, shift: false, win: true);
-        Assert.Equal("Win+C", combo7);
+        Assert.Equal("Mic Key (Win+C)", combo7);
 
         // Ctrl+Alt+M combination for PowerToys
         string combo8 = KeyRemapManager.FormatKeyCombination(0x4D, ctrl: true, alt: true, shift: false, win: false);

@@ -20,8 +20,8 @@ public class KeyRemapManager : IDisposable
 
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const uint VK_DUMMY = 0xFF; // PowerToys centralized hook Start Menu suppression dummy key
-    private const uint POWERTOYS_SHORTCUT_FLAG = 0x101; // PowerToys KeyboardManagerConstants::KEYBOARDMANAGER_SHORTCUT_FLAG
+    private const uint VK_MENU_MASK = 0xE8; // AutoHotkey / Windows Shell menu mask key (clears g_fWinKeyPressed in explorer.exe)
+    private const uint VK_DUMMY = 0xFF;     // PowerToys dummy key
     private const uint DUMMY_KEY_FLAG = 0x2000;
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -249,9 +249,41 @@ public class KeyRemapManager : IDisposable
     {
         try
         {
-            var inputs = new INPUT[2];
-            // 1. VK_DUMMY 0xFF down (PowerToys centralized dummy key event with KEYBOARDMANAGER_SHORTCUT_FLAG)
+            var inputs = new INPUT[4];
+            // 1. VK_MENU_MASK 0xE8 down (AutoHotkey verified shell mask key that resets g_fWinKeyPressed in explorer.exe)
             inputs[0] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)VK_MENU_MASK,
+                        wScan = 0,
+                        dwFlags = 0,
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            // 2. VK_MENU_MASK 0xE8 up
+            inputs[1] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                u = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = (ushort)VK_MENU_MASK,
+                        wScan = 0,
+                        dwFlags = KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                    }
+                }
+            };
+            // 3. VK_DUMMY 0xFF down (PowerToys dummy key)
+            inputs[2] = new INPUT
             {
                 type = INPUT_KEYBOARD,
                 u = new InputUnion
@@ -262,12 +294,12 @@ public class KeyRemapManager : IDisposable
                         wScan = 0,
                         dwFlags = 0,
                         time = 0,
-                        dwExtraInfo = (UIntPtr)POWERTOYS_SHORTCUT_FLAG
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
                     }
                 }
             };
-            // 2. VK_DUMMY 0xFF up
-            inputs[1] = new INPUT
+            // 4. VK_DUMMY 0xFF up
+            inputs[3] = new INPUT
             {
                 type = INPUT_KEYBOARD,
                 u = new InputUnion
@@ -278,7 +310,7 @@ public class KeyRemapManager : IDisposable
                         wScan = 0,
                         dwFlags = KEYEVENTF_KEYUP,
                         time = 0,
-                        dwExtraInfo = (UIntPtr)POWERTOYS_SHORTCUT_FLAG
+                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
                     }
                 }
             };
@@ -338,10 +370,10 @@ public class KeyRemapManager : IDisposable
             var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             uint vkCode = hookStruct.vkCode;
 
-            // PowerToys centralized hook pattern: ignore synthetic dummy key events injected for Start Menu suppression
+            // Ignore synthetic dummy and menu-mask key events injected for Start Menu suppression
             if (hookStruct.dwExtraInfo == (UIntPtr)DUMMY_KEY_FLAG ||
-                hookStruct.dwExtraInfo == (UIntPtr)POWERTOYS_SHORTCUT_FLAG ||
-                vkCode == VK_DUMMY)
+                vkCode == VK_DUMMY ||
+                vkCode == VK_MENU_MASK)
             {
                 return CallNextHookEx(_hookId, nCode, wParam, lParam);
             }
@@ -490,13 +522,26 @@ public class KeyRemapManager : IDisposable
                             {
                                 foreach (var rule in Bindings)
                                 {
-                                    if (rule.MappingType == KeyMappingType.Shortcut &&
+                                    bool match = (rule.MappingType == KeyMappingType.Shortcut &&
                                         rule.VirtualKey == vkCode &&
                                         rule.ModifiersCtrl == ctrl &&
                                         rule.ModifiersAlt == alt &&
                                         rule.ModifiersShift == shift &&
                                         rule.ModifiersWin == win &&
-                                        !rule.IsEmpty)
+                                        !rule.IsEmpty);
+
+                                    // Hardware compatibility alias:
+                                    // Keychron and laptop dedicated microphone keys transmit Win+C at the firmware/hardware level on Windows.
+                                    // When ToggleMute is configured (e.g. Ctrl+Shift+Alt+M), also accept Win+C seamlessly so the physical mic key always works out-of-the-box.
+                                    if (!match && rule.Action == KeyRemapAction.ToggleMute && !rule.IsEmpty)
+                                    {
+                                        if (vkCode == 0x43 && win && !ctrl && !alt && !shift)
+                                        {
+                                            match = true;
+                                        }
+                                    }
+
+                                    if (match)
                                     {
                                         matchedRule = rule;
                                         break;
@@ -650,6 +695,11 @@ public class KeyRemapManager : IDisposable
     public static string FormatKeyCombination(uint vk, bool ctrl, bool alt, bool shift, bool win)
     {
         if (vk == 0) return "None";
+
+        if (vk == 0x43 && win && !ctrl && !alt && !shift)
+        {
+            return "Mic Key (Win+C)";
+        }
 
         var parts = new List<string>();
         if (ctrl) parts.Add("Ctrl");

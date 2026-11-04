@@ -21,6 +21,7 @@ public class KeyRemapManager : IDisposable
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint VK_DUMMY = 0xFF; // PowerToys centralized hook Start Menu suppression dummy key
+    private const uint POWERTOYS_SHORTCUT_FLAG = 0x101; // PowerToys KeyboardManagerConstants::KEYBOARDMANAGER_SHORTCUT_FLAG
     private const uint DUMMY_KEY_FLAG = 0x2000;
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -126,7 +127,10 @@ public class KeyRemapManager : IDisposable
 
             try
             {
-                IntPtr hMod = GetModuleHandle(null);
+                using var curProcess = Process.GetCurrentProcess();
+                using var curModule = curProcess.MainModule;
+                IntPtr hMod = GetModuleHandle(curModule?.ModuleName);
+                if (hMod == IntPtr.Zero) hMod = GetModuleHandle(null);
                 _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _hookCallbackDelegate, hMod, 0);
             }
             catch (Exception)
@@ -246,7 +250,7 @@ public class KeyRemapManager : IDisposable
         try
         {
             var inputs = new INPUT[2];
-            // 1. VK_DUMMY 0xFF down (PowerToys centralized dummy key event)
+            // 1. VK_DUMMY 0xFF down (PowerToys centralized dummy key event with KEYBOARDMANAGER_SHORTCUT_FLAG)
             inputs[0] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -258,7 +262,7 @@ public class KeyRemapManager : IDisposable
                         wScan = 0,
                         dwFlags = 0,
                         time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                        dwExtraInfo = (UIntPtr)POWERTOYS_SHORTCUT_FLAG
                     }
                 }
             };
@@ -274,7 +278,7 @@ public class KeyRemapManager : IDisposable
                         wScan = 0,
                         dwFlags = KEYEVENTF_KEYUP,
                         time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
+                        dwExtraInfo = (UIntPtr)POWERTOYS_SHORTCUT_FLAG
                     }
                 }
             };
@@ -284,20 +288,37 @@ public class KeyRemapManager : IDisposable
         catch { }
     }
 
+    /// <summary>
+    /// Determines whether AltGr (Right Alt on international keyboards) is currently pressed.
+    /// Grounded in Belphemur/SoundSwitch KeyboardWindowsAPI.IsAltGr().
+    /// On Windows, AltGr generates Right Alt (VK_RMENU 0xA5) + synthetic Left Ctrl (VK_LCONTROL 0xA2).
+    /// </summary>
+    public static bool IsAltGr()
+    {
+        short rMenu = GetAsyncKeyState(0xA5); // VK_RMENU
+        short lMenu = GetAsyncKeyState(0xA4); // VK_LMENU
+        short lCtrl = GetAsyncKeyState(0xA2); // VK_LCONTROL
+        short rCtrl = GetAsyncKeyState(0xA3); // VK_RCONTROL
+
+        return (rMenu & 0x8000) != 0 && (lCtrl & 0x8000) != 0 && (lMenu & 0x8000) == 0 && (rCtrl & 0x8000) == 0;
+    }
+
     private void GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, uint hookFlags = 0)
     {
         lock (_lock)
         {
-            ctrl = _activeModifiers.Contains(0x11) ||
+            bool isAltGr = IsAltGr();
+
+            ctrl = !isAltGr && (_activeModifiers.Contains(0x11) ||
                    ((GetAsyncKeyState(0x11) & 0x8000) != 0) ||
                    ((GetAsyncKeyState(0xA2) & 0x8000) != 0) ||
-                   ((GetAsyncKeyState(0xA3) & 0x8000) != 0);
+                   ((GetAsyncKeyState(0xA3) & 0x8000) != 0));
 
-            alt = _activeModifiers.Contains(0x12) ||
+            alt = !isAltGr && (_activeModifiers.Contains(0x12) ||
                   ((GetAsyncKeyState(0x12) & 0x8000) != 0) ||
                   ((GetAsyncKeyState(0xA4) & 0x8000) != 0) ||
                   ((GetAsyncKeyState(0xA5) & 0x8000) != 0) ||
-                  ((hookFlags & LLKHF_ALTDOWN) != 0);
+                  ((hookFlags & LLKHF_ALTDOWN) != 0));
 
             shift = _activeModifiers.Contains(0x10) ||
                     ((GetAsyncKeyState(0x10) & 0x8000) != 0) ||
@@ -318,7 +339,9 @@ public class KeyRemapManager : IDisposable
             uint vkCode = hookStruct.vkCode;
 
             // PowerToys centralized hook pattern: ignore synthetic dummy key events injected for Start Menu suppression
-            if (hookStruct.dwExtraInfo == (UIntPtr)DUMMY_KEY_FLAG || vkCode == VK_DUMMY)
+            if (hookStruct.dwExtraInfo == (UIntPtr)DUMMY_KEY_FLAG ||
+                hookStruct.dwExtraInfo == (UIntPtr)POWERTOYS_SHORTCUT_FLAG ||
+                vkCode == VK_DUMMY)
             {
                 return CallNextHookEx(_hookId, nCode, wParam, lParam);
             }
@@ -391,7 +414,10 @@ public class KeyRemapManager : IDisposable
                             }
 
                             RecordingEnded?.Invoke();
-                            callback?.Invoke(recorded);
+                            if (callback != null)
+                            {
+                                ThreadPool.QueueUserWorkItem(_ => callback(recorded));
+                            }
 
                             return (IntPtr)1; // Swallow trigger key
                         }
@@ -525,7 +551,8 @@ public class KeyRemapManager : IDisposable
 
                             if (firstPress)
                             {
-                                ActionTriggered?.Invoke(matchedRule.Action, KeyPressState.Down);
+                                var act = matchedRule.Action;
+                                ThreadPool.QueueUserWorkItem(_ => ActionTriggered?.Invoke(act, KeyPressState.Down));
                             }
 
                             if (matchedRule.SuppressOriginalKey)
@@ -558,7 +585,8 @@ public class KeyRemapManager : IDisposable
 
                         if (wasPressed && ruleToRelease != null)
                         {
-                            ActionTriggered?.Invoke(ruleToRelease.Action, KeyPressState.Up);
+                            var act = ruleToRelease.Action;
+                            ThreadPool.QueueUserWorkItem(_ => ActionTriggered?.Invoke(act, KeyPressState.Up));
 
                             if (ruleToRelease.SuppressOriginalKey)
                             {

@@ -36,16 +36,21 @@ public class PolicyConfigTests
     [Fact]
     public void SetDefaultDeviceAllRoles_OnRealAvailableDevice_DoesNotThrow()
     {
-        using var engine = new AudioLockEngine();
-        var devices = engine.GetAvailableCaptureDevices();
-
-        if (devices.Count > 0)
+        string? defaultId = null;
+        try
         {
-            var firstDevice = devices[0];
+            using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            using var defaultDevice = enumerator.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.Role.Console);
+            defaultId = defaultDevice.ID;
+        }
+        catch { }
+
+        if (defaultId != null)
+        {
             // Calling SetDefaultDeviceAllRoles on the existing default/active device should execute cleanly
             var ex = Record.Exception(() =>
             {
-                PolicyConfigClient.SetDefaultDeviceAllRoles(firstDevice.Id);
+                PolicyConfigClient.SetDefaultDeviceAllRoles(defaultId);
             });
             Assert.Null(ex);
         }

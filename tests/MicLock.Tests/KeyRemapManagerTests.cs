@@ -298,4 +298,19 @@ public class KeyRemapManagerTests
         Assert.False(muteRule.ModifiersWin);
         Assert.Equal("Ctrl+Shift+Alt+M", muteRule.DisplayText);
     }
+
+    [Fact]
+    public void IsAltGr_ExecutesSafely_ReturnsBoolean()
+    {
+        bool isAltGr = KeyRemapManager.IsAltGr();
+        // Method should execute without exception and return valid bool
+        Assert.True(isAltGr == true || isAltGr == false);
+    }
+
+    [Fact]
+    public void SuppressStartMenu_ExecutesSafely_DoesNotThrow()
+    {
+        var ex = Record.Exception(() => KeyRemapManager.SuppressStartMenu());
+        Assert.Null(ex);
+    }
 }

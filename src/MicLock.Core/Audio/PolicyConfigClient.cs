@@ -63,6 +63,28 @@ public static class PolicyConfigClient
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;
 
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA)
+        {
+            return SetDefaultEndpointInternal(deviceId, role);
+        }
+
+        bool result = false;
+        var thread = new Thread(() =>
+        {
+            result = SetDefaultEndpointInternal(deviceId, role);
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        if (!thread.Join(2000))
+        {
+            return false;
+        }
+        return result;
+    }
+
+    private static bool SetDefaultEndpointInternal(string deviceId, ERole role)
+    {
         try
         {
             var client = new CPolicyConfigClient();
@@ -90,6 +112,28 @@ public static class PolicyConfigClient
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;
 
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA)
+        {
+            return SetDefaultDeviceAllRolesInternal(deviceId);
+        }
+
+        bool result = false;
+        var thread = new Thread(() =>
+        {
+            result = SetDefaultDeviceAllRolesInternal(deviceId);
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        if (!thread.Join(2500))
+        {
+            return false;
+        }
+        return result;
+    }
+
+    private static bool SetDefaultDeviceAllRolesInternal(string deviceId)
+    {
         bool success = false;
         try
         {

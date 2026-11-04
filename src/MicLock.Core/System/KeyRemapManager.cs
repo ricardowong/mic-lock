@@ -98,13 +98,16 @@ public class KeyRemapManager : IDisposable
     // Capture Mode State
     private bool _isCapturingInput;
     private bool _isCapturingTarget;
+    private bool _isDrainingCapture;
+    private KeyBindingRule? _pendingCapturedInputRule;
+    private (uint vk, bool c, bool a, bool s, bool w, string text)? _pendingCapturedTarget;
     private Action<KeyBindingRule>? _captureInputCallback;
     private Action<uint, bool, bool, bool, bool, string>? _captureTargetCallback;
     private Action? _captureCancelCallback;
 
     public bool IsHookInstalled => _hookId != IntPtr.Zero;
     public bool IsRemapEnabled { get; set; } = true;
-    public bool IsCapturing => _isCapturingInput || _isCapturingTarget;
+    public bool IsCapturing => _isCapturingInput || _isCapturingTarget || _isDrainingCapture;
 
     public List<KeyBindingRule> Bindings { get; set; } = new();
 
@@ -173,6 +176,9 @@ public class KeyRemapManager : IDisposable
         {
             _isCapturingInput = true;
             _isCapturingTarget = false;
+            _isDrainingCapture = false;
+            _pendingCapturedInputRule = null;
+            _pendingCapturedTarget = null;
             _captureInputCallback = onCaptured;
             _captureCancelCallback = onCancelled;
             _activeModifiers.Clear();
@@ -187,6 +193,9 @@ public class KeyRemapManager : IDisposable
         {
             _isCapturingTarget = true;
             _isCapturingInput = false;
+            _isDrainingCapture = false;
+            _pendingCapturedInputRule = null;
+            _pendingCapturedTarget = null;
             _captureTargetCallback = onCaptured;
             _captureCancelCallback = onCancelled;
             _activeModifiers.Clear();
@@ -200,9 +209,12 @@ public class KeyRemapManager : IDisposable
         Action? cancelCb;
         lock (_lock)
         {
-            if (!_isCapturingInput && !_isCapturingTarget) return;
+            if (!_isCapturingInput && !_isCapturingTarget && !_isDrainingCapture) return;
             _isCapturingInput = false;
             _isCapturingTarget = false;
+            _isDrainingCapture = false;
+            _pendingCapturedInputRule = null;
+            _pendingCapturedTarget = null;
             _captureInputCallback = null;
             _captureTargetCallback = null;
             cancelCb = _captureCancelCallback;
@@ -505,12 +517,12 @@ public class KeyRemapManager : IDisposable
                 // =================================================================================
                 // 1. CAPTURE / DETECTION MODE (PowerToys: DetectShortcutUIBackend / DetectSingleRemapKeyUIBackend)
                 // =================================================================================
-                if (_isCapturingInput || _isCapturingTarget)
+                if (_isCapturingInput || _isCapturingTarget || _isDrainingCapture)
                 {
                     if (isDown)
                     {
                         // Escape pressed alone cancels capture
-                        if (vkCode == 0x1B)
+                        if (vkCode == 0x1B && !_isDrainingCapture)
                         {
                             GetCurrentModifierStates(out bool c, out bool a, out bool s, out bool w, hookStruct.flags);
                             if (!c && !a && !s && !w)
@@ -520,12 +532,12 @@ public class KeyRemapManager : IDisposable
                             }
                         }
 
-                        // While capturing, suppress modifier presses completely
+                        // While capturing or draining, suppress all key downs
                         if (IsModifierKey(vkCode))
                         {
-                            return (IntPtr)1; // Pure suppression - zero synthetic key injections
+                            return (IntPtr)1; // Pure suppression of modifier keydown
                         }
-                        else
+                        else if (!_isDrainingCapture)
                         {
                             // Non-modifier trigger key arrived!
                             GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, hookStruct.flags);
@@ -534,60 +546,90 @@ public class KeyRemapManager : IDisposable
 
                             LogMessage?.Invoke($"[Capture] Intercepted Key: vkCode=0x{vkCode:X2} ({FormatKeyName(vkCode)}), ScanCode=0x{hookStruct.scanCode:X2}, Flags=0x{hookStruct.flags:X2}, Modifiers: Ctrl={ctrl}, Alt={alt}, Shift={shift}, Win={win}");
 
-                            if (_isCapturingInput)
+                            lock (_lock)
                             {
-                                var recorded = new KeyBindingRule
+                                if (_isCapturingInput)
                                 {
-                                    VirtualKey = vkCode,
-                                    ModifiersCtrl = ctrl,
-                                    ModifiersAlt = alt,
-                                    ModifiersShift = shift,
-                                    ModifiersWin = win,
-                                    MappingType = hasModifiers ? KeyMappingType.Shortcut : KeyMappingType.SingleKey,
-                                    SuppressOriginalKey = true,
-                                    DisplayText = displayCombo
-                                };
-
-                                Action<KeyBindingRule>? cb = _captureInputCallback;
-                                lock (_lock)
+                                    _pendingCapturedInputRule = new KeyBindingRule
+                                    {
+                                        VirtualKey = vkCode,
+                                        ModifiersCtrl = ctrl,
+                                        ModifiersAlt = alt,
+                                        ModifiersShift = shift,
+                                        ModifiersWin = win,
+                                        MappingType = hasModifiers ? KeyMappingType.Shortcut : KeyMappingType.SingleKey,
+                                        SuppressOriginalKey = true,
+                                        DisplayText = displayCombo
+                                    };
+                                }
+                                else if (_isCapturingTarget)
                                 {
-                                    _isCapturingInput = false;
-                                    _captureInputCallback = null;
-                                    _captureCancelCallback = null;
-                                    _activeModifiers.Clear();
+                                    _pendingCapturedTarget = (vkCode, ctrl, alt, shift, win, displayCombo);
                                 }
 
-                                CaptureEnded?.Invoke();
-                                if (cb != null)
-                                {
-                                    ThreadPool.QueueUserWorkItem(_ => cb(recorded));
-                                }
-                            }
-                            else if (_isCapturingTarget)
-                            {
-                                Action<uint, bool, bool, bool, bool, string>? cb = _captureTargetCallback;
-                                lock (_lock)
-                                {
-                                    _isCapturingTarget = false;
-                                    _captureTargetCallback = null;
-                                    _captureCancelCallback = null;
-                                    _activeModifiers.Clear();
-                                }
-
-                                CaptureEnded?.Invoke();
-                                if (cb != null)
-                                {
-                                    ThreadPool.QueueUserWorkItem(_ => cb(vkCode, ctrl, alt, shift, win, displayCombo));
-                                }
+                                _isDrainingCapture = true;
                             }
 
                             return (IntPtr)1; // Pure suppression of trigger keydown
+                        }
+                        else
+                        {
+                            return (IntPtr)1; // Auto-repeat while draining
                         }
                     }
                     else if (isUp)
                     {
                         // In PowerToys DetectShortcutUIBackend:
                         // Suppress all key-up events during capture so Windows OS never receives unhandled key transitions
+                        if (_isDrainingCapture)
+                        {
+                            bool allReleased = false;
+                            lock (_lock)
+                            {
+                                // If no modifier keys remain pressed, capture is complete
+                                if (_activeModifiers.Count == 0)
+                                {
+                                    allReleased = true;
+                                }
+                            }
+
+                            if (allReleased)
+                            {
+                                // Disarm Start Menu in explorer.exe shell before finalizing
+                                SuppressStartMenu();
+
+                                Action<KeyBindingRule>? cbInput = _captureInputCallback;
+                                Action<uint, bool, bool, bool, bool, string>? cbTarget = _captureTargetCallback;
+                                KeyBindingRule? recRule = _pendingCapturedInputRule;
+                                var recTarget = _pendingCapturedTarget;
+
+                                lock (_lock)
+                                {
+                                    _isCapturingInput = false;
+                                    _isCapturingTarget = false;
+                                    _isDrainingCapture = false;
+                                    _captureInputCallback = null;
+                                    _captureTargetCallback = null;
+                                    _captureCancelCallback = null;
+                                    _pendingCapturedInputRule = null;
+                                    _pendingCapturedTarget = null;
+                                    _activeModifiers.Clear();
+                                }
+
+                                CaptureEnded?.Invoke();
+
+                                if (cbInput != null && recRule != null)
+                                {
+                                    ThreadPool.QueueUserWorkItem(_ => cbInput(recRule));
+                                }
+                                else if (cbTarget != null && recTarget.HasValue)
+                                {
+                                    var t = recTarget.Value;
+                                    ThreadPool.QueueUserWorkItem(_ => cbTarget(t.vk, t.c, t.a, t.s, t.w, t.text));
+                                }
+                            }
+                        }
+
                         return (IntPtr)1;
                     }
                 }
@@ -602,22 +644,26 @@ public class KeyRemapManager : IDisposable
                     {
                         if (isUp)
                         {
-                            // In PowerToys KeyboardEventHandlers.cpp (lines 1002-1074):
-                            // Case 1: Physical modifier released while a shortcut was in the invoked state.
+                            // In PowerToys KeyboardEventHandlers.cpp (lines 1002-1074 & 2165-2175):
+                            // When a physical modifier is released:
+                            // 1. Release any injected target modifiers so they don't remain stuck down.
+                            // 2. Disarm the Start Menu by sending a dummy key event.
+                            // 3. CRITICAL: ALWAYS FORWARD the physical modifier keyup to Windows!
+                            //    Never swallow physical modifier keyups. Swallowing physical keyup desynchronizes
+                            //    the Windows kernel physical device table and traps the modifier in the stuck state.
                             if (_isShortcutInvoked && _invokedRule != null && _invokedRule.ModifiersWin && (vkCode == 0x5B || vkCode == 0x5C))
                             {
                                 var releaseList = new List<INPUT>();
 
                                 if (_invokedRule.SendRemapKeys && _invokedRule.HasRemap)
                                 {
-                                    // Release target modifiers in reverse order (Win, Alt, Shift, Ctrl)
                                     if (_invokedRule.RemapModifiersWin) releaseList.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
                                     if (_invokedRule.RemapModifiersAlt) releaseList.Add(CreateKeyInput(0x12, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
                                     if (_invokedRule.RemapModifiersShift) releaseList.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
                                     if (_invokedRule.RemapModifiersCtrl) releaseList.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
                                 }
 
-                                // PowerToys Dummy Key (0xFF) DOWN + UP disarms Start Menu permanently
+                                // Disarm Start Menu with PowerToys Dummy Key (0xFF)
                                 releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, 0, POWERTOYS_SHORTCUT_FLAG));
                                 releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
 
@@ -632,8 +678,7 @@ public class KeyRemapManager : IDisposable
                                     _invokedRule = null;
                                 }
 
-                                LogMessage?.Invoke("[Remap] PowerToys Case 1: Released target modifiers and disarmed Start Menu on physical Win keyup.");
-                                return (IntPtr)1; // Swallowed cleanly because Win was already lifted in atomic batch
+                                LogMessage?.Invoke("[Remap] Released target modifiers and forwarded physical Win keyup to OS.");
                             }
 
                             lock (_lock)
@@ -646,7 +691,7 @@ public class KeyRemapManager : IDisposable
                             }
                         }
 
-                        // Pass normal modifier events to Windows
+                        // ALWAYS forward modifier events (both down and up) to Windows!
                         return CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
 

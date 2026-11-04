@@ -88,7 +88,6 @@ public class KeyRemapManager : IDisposable
     private bool _isShortcutInvoked;
     private KeyBindingRule? _invokedRule;
     private bool _invokedWithWin;
-    private bool _recordingPendingWinUp;
 
     private Action<KeyBindingRule>? _recordingCallback;
     private Action? _recordingCancelCallback;
@@ -150,7 +149,6 @@ public class KeyRemapManager : IDisposable
                 _isShortcutInvoked = false;
                 _invokedRule = null;
                 _invokedWithWin = false;
-                _recordingPendingWinUp = false;
             }
         }
     }
@@ -178,7 +176,6 @@ public class KeyRemapManager : IDisposable
             var cancelCb = _recordingCancelCallback;
             _recordingCancelCallback = null;
             _activeModifiers.Clear();
-            _recordingPendingWinUp = false;
             cancelCb?.Invoke();
         }
 
@@ -248,8 +245,8 @@ public class KeyRemapManager : IDisposable
     {
         try
         {
-            var inputs = new INPUT[4];
-            // 1. VK_DUMMY 0xFF down
+            var inputs = new INPUT[2];
+            // 1. VK_DUMMY 0xFF down (PowerToys centralized dummy key event)
             inputs[0] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -275,38 +272,6 @@ public class KeyRemapManager : IDisposable
                     {
                         wVk = (ushort)VK_DUMMY,
                         wScan = 0,
-                        dwFlags = KEYEVENTF_KEYUP,
-                        time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
-                    }
-                }
-            };
-            // 3. VK_CONTROL (0x11) with scan code 0x1D down (AutoHotkey / PowerToys shell mask)
-            inputs[2] = new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                u = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = 0x11,
-                        wScan = 0x1D,
-                        dwFlags = 0,
-                        time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
-                    }
-                }
-            };
-            // 4. VK_CONTROL (0x11) with scan code 0x1D up
-            inputs[3] = new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                u = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = 0x11,
-                        wScan = 0x1D,
                         dwFlags = KEYEVENTF_KEYUP,
                         time = 0,
                         dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
@@ -399,7 +364,6 @@ public class KeyRemapManager : IDisposable
                             if (win)
                             {
                                 SuppressStartMenu();
-                                _recordingPendingWinUp = true;
                             }
 
                             var recorded = new KeyBindingRule
@@ -431,27 +395,59 @@ public class KeyRemapManager : IDisposable
 
                             return (IntPtr)1; // Swallow trigger key
                         }
+
+                        // Allow modifier keydown to pass through to OS so keystate remains consistent
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
                     else if (isUp)
                     {
-                        if (_recordingPendingWinUp && (vkCode == 0x5B || vkCode == 0x5C))
+                        if (vkCode == 0x5B || vkCode == 0x5C)
                         {
-                            _recordingPendingWinUp = false;
                             SuppressStartMenu();
-                            return (IntPtr)1; // Swallow Win key-up after recording so Start Menu doesn't open
                         }
+                        // Pass modifier keyup to Windows so OS modifier state is never stuck
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
-
-                    // While in recording mode, swallow modifier keys so they don't leak to other apps
-                    return (IntPtr)1;
                 }
 
                 // 2. NORMAL EXECUTION MODE (PowerToys: HandleSingleKeyRemapEvent + HandleShortcutRemapEvent)
                 if (IsRemapEnabled)
                 {
+                    // A) PHYSICAL MODIFIER KEYS (Ctrl, Alt, Shift, Win):
+                    // CRITICAL: NEVER swallow physical modifier keys in normal execution mode!
+                    // Windows OS must receive modifier keydown to track modifier state, and modifier keyup to clear it.
+                    // Swallowing modifier keyup causes the Windows key or Ctrl/Alt/Shift to become permanently stuck down!
+                    if (normMod != 0)
+                    {
+                        if (isUp)
+                        {
+                            lock (_lock)
+                            {
+                                // Microsoft PowerToys Start Menu suppression:
+                                // Send dummy key immediately before forwarding Win key-up so Start Menu does not open
+                                if (_invokedWithWin && (vkCode == 0x5B || vkCode == 0x5C))
+                                {
+                                    SuppressStartMenu();
+                                }
+
+                                // If all physical modifiers have released AND no action keys remain pressed, reset invoked shortcut state
+                                if (_activeModifiers.Count == 0 && _pressedKeys.Count == 0)
+                                {
+                                    _isShortcutInvoked = false;
+                                    _invokedRule = null;
+                                    _invokedWithWin = false;
+                                }
+                            }
+                        }
+
+                        // Always forward physical modifier events to Windows and downstream hooks
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
+                    }
+
+                    // B) NON-MODIFIER (ACTION / TRIGGER) KEYS:
                     if (isDown)
                     {
-                        // Check if currently invoked shortcut trigger key is repeating
+                        // Autorepeat suppression for currently invoked shortcut trigger key
                         if (_isShortcutInvoked && _invokedRule != null && vkCode == _invokedRule.VirtualKey)
                         {
                             return (IntPtr)1; // Swallow typematic repeat of invoked trigger key
@@ -518,7 +514,10 @@ public class KeyRemapManager : IDisposable
                             _invokedRule = matchedRule;
                             _invokedWithWin = isWinShortcut;
 
-                            // PowerToys Start Menu suppression: Inject dummy key + Ctrl mask
+                            // Microsoft PowerToys Start Menu suppression:
+                            // Inject dummy key (VK_DUMMY 0xFF down+up) while Win is down.
+                            // This marks the Windows key as having been part of a key combination in the Windows Shell,
+                            // so when the Windows key is released, the Start Menu will NOT open.
                             if (isWinShortcut)
                             {
                                 SuppressStartMenu();
@@ -531,76 +530,39 @@ public class KeyRemapManager : IDisposable
 
                             if (matchedRule.SuppressOriginalKey)
                             {
-                                return (IntPtr)1;
+                                return (IntPtr)1; // Swallow trigger key
                             }
                         }
                     }
                     else if (isUp)
                     {
-                        // Handle release when a shortcut or remap was invoked
-                        if (_recordingPendingWinUp && (vkCode == 0x5B || vkCode == 0x5C))
-                        {
-                            _recordingPendingWinUp = false;
-                            SuppressStartMenu();
-                            return (IntPtr)1;
-                        }
+                        bool wasPressed = false;
+                        KeyBindingRule? ruleToRelease = null;
 
-                        if (_isShortcutInvoked && _invokedRule != null)
+                        lock (_lock)
                         {
-                            if (vkCode == _invokedRule.VirtualKey)
+                            if (_pressedKeys.Contains(vkCode))
                             {
-                                bool wasDown = false;
-                                lock (_lock)
-                                {
-                                    if (_pressedKeys.Contains(vkCode))
-                                    {
-                                        _pressedKeys.Remove(vkCode);
-                                        wasDown = true;
-                                    }
-                                }
-
-                                if (_invokedWithWin)
-                                {
-                                    SuppressStartMenu();
-                                }
-
-                                if (wasDown)
-                                {
-                                    ActionTriggered?.Invoke(_invokedRule.Action, KeyPressState.Up);
-                                }
-
-                                GetCurrentModifierStates(out bool c, out bool a, out bool s, out bool w, hookStruct.flags);
-                                if (!c && !a && !s && !w)
-                                {
-                                    _isShortcutInvoked = false;
-                                    _invokedRule = null;
-                                    _invokedWithWin = false;
-                                }
-
-                                if (_invokedRule == null || _invokedRule.SuppressOriginalKey)
-                                {
-                                    return (IntPtr)1;
-                                }
+                                _pressedKeys.Remove(vkCode);
+                                wasPressed = true;
+                                ruleToRelease = _invokedRule;
                             }
-                            else if (_invokedWithWin && (vkCode == 0x5B || vkCode == 0x5C))
+
+                            if (_activeModifiers.Count == 0 && _pressedKeys.Count == 0)
                             {
-                                // PowerToys Start Menu Suppression: Physical Windows key release swallowed when part of an invoked shortcut
-                                SuppressStartMenu();
-                                _invokedWithWin = false;
                                 _isShortcutInvoked = false;
                                 _invokedRule = null;
-                                return (IntPtr)1;
+                                _invokedWithWin = false;
                             }
-                            else if (normMod != 0)
+                        }
+
+                        if (wasPressed && ruleToRelease != null)
+                        {
+                            ActionTriggered?.Invoke(ruleToRelease.Action, KeyPressState.Up);
+
+                            if (ruleToRelease.SuppressOriginalKey)
                             {
-                                GetCurrentModifierStates(out bool c, out bool a, out bool s, out bool w, hookStruct.flags);
-                                if (!c && !a && !s && !w)
-                                {
-                                    _isShortcutInvoked = false;
-                                    _invokedRule = null;
-                                    _invokedWithWin = false;
-                                }
-                                return (IntPtr)1;
+                                return (IntPtr)1; // Swallow trigger key up
                             }
                         }
                     }

@@ -17,7 +17,6 @@ public partial class App : Application
 
     private SingleInstanceManager? _singleInstanceManager;
     private AppIpcServer? _ipcServer;
-    private GlobalHotkeyManager? _hotkeyManager;
     private AudioLockEngine? _audioEngine;
     private OsdBannerWindow? _osdBanner;
     private NotifyIcon? _notifyIcon;
@@ -92,12 +91,7 @@ public partial class App : Application
         // 5. Initialize System Tray Icon
         InitTrayIcon();
 
-        // 6. Global Hotkey (Ctrl + Shift + Alt + M)
-        _hotkeyManager = new GlobalHotkeyManager();
-        _hotkeyManager.HotkeyPressed += () => _audioEngine.ToggleMute();
-        _hotkeyManager.Register();
-
-        // 7. Wire OSD Banner to Audio Mute Events
+        // 6. Wire OSD Banner to Audio Mute Events
         _audioEngine.MuteChanged += (s, muted) =>
         {
             Dispatcher.Invoke(() =>
@@ -235,7 +229,6 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _wheelHook?.ReleaseHandle();
-        _hotkeyManager?.Dispose();
         _ipcServer?.Dispose();
         if (_notifyIcon != null)
         {

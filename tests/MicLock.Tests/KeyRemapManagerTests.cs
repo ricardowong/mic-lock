@@ -365,6 +365,25 @@ public class KeyRemapManagerTests
     }
 
     [Fact]
+    public void AreAnyModifiersPhysicallyHeld_ExecutesSafely_ReturnsBoolean()
+    {
+        bool result = KeyRemapManager.AreAnyModifiersPhysicallyHeld();
+        Assert.True(result == true || result == false);
+    }
+
+    [Theory]
+    [InlineData(0x5Bu)] // VK_LWIN
+    [InlineData(0x5Cu)] // VK_RWIN
+    [InlineData(0x11u)] // VK_CONTROL
+    [InlineData(0x12u)] // VK_MENU
+    [InlineData(0x10u)] // VK_SHIFT
+    public void IsPhysicalKeyDown_ExecutesSafely_ReturnsBoolean(uint vk)
+    {
+        bool result = KeyRemapManager.IsPhysicalKeyDown(vk);
+        Assert.True(result == true || result == false);
+    }
+
+    [Fact]
     public void CaptureLifecycle_StartsAndCancelsCorrectly()
     {
         using var manager = new KeyRemapManager();

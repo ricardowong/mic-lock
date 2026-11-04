@@ -454,6 +454,19 @@ public class KeyRemapManager : IDisposable
         return (rMenu & 0x8000) != 0 && (lCtrl & 0x8000) != 0 && (lMenu & 0x8000) == 0 && (rCtrl & 0x8000) == 0;
     }
 
+    public static bool IsPhysicalKeyDown(uint vk)
+    {
+        return (GetAsyncKeyState((int)vk) & 0x8000) != 0;
+    }
+
+    public static bool AreAnyModifiersPhysicallyHeld()
+    {
+        return IsPhysicalKeyDown(0x5B) || IsPhysicalKeyDown(0x5C) ||
+               IsPhysicalKeyDown(0x11) || IsPhysicalKeyDown(0xA2) || IsPhysicalKeyDown(0xA3) ||
+               IsPhysicalKeyDown(0x12) || IsPhysicalKeyDown(0xA4) || IsPhysicalKeyDown(0xA5) ||
+               IsPhysicalKeyDown(0x10) || IsPhysicalKeyDown(0xA0) || IsPhysicalKeyDown(0xA1);
+    }
+
     private void GetCurrentModifierStates(out bool ctrl, out bool alt, out bool shift, out bool win, uint hookFlags = 0)
     {
         lock (_lock)
@@ -586,8 +599,8 @@ public class KeyRemapManager : IDisposable
                             bool allReleased = false;
                             lock (_lock)
                             {
-                                // If no modifier keys remain pressed, capture is complete
-                                if (_activeModifiers.Count == 0)
+                                // If no modifier keys remain registered and none are physically held, capture is complete
+                                if (_activeModifiers.Count == 0 && !AreAnyModifiersPhysicallyHeld())
                                 {
                                     allReleased = true;
                                 }
@@ -645,12 +658,12 @@ public class KeyRemapManager : IDisposable
                         if (isUp)
                         {
                             // In PowerToys KeyboardEventHandlers.cpp (lines 1002-1074 & 2165-2175):
-                            // When a physical modifier is released:
+                            // When a physical modifier is released while a shortcut is invoked:
                             // 1. Release any injected target modifiers so they don't remain stuck down.
-                            // 2. Disarm the Start Menu by sending a dummy key event.
-                            // 3. CRITICAL: ALWAYS FORWARD the physical modifier keyup to Windows!
-                            //    Never swallow physical modifier keyups. Swallowing physical keyup desynchronizes
-                            //    the Windows kernel physical device table and traps the modifier in the stuck state.
+                            // 2. Disarm the Start Menu by sending menu mask (0xE8) and dummy key (0xFF).
+                            // 3. CRITICAL: In PowerToys line 1073: SUPPRESS the physical modifier keyup from reaching Windows!
+                            //    Windows already received the modifier keyup when the shortcut was initially invoked.
+                            //    Forwarding it would inject an orphan physical keyup, triggering Explorer's Start Menu.
                             if (_isShortcutInvoked && _invokedRule != null && _invokedRule.ModifiersWin && (vkCode == 0x5B || vkCode == 0x5C))
                             {
                                 var releaseList = new List<INPUT>();
@@ -663,7 +676,9 @@ public class KeyRemapManager : IDisposable
                                     if (_invokedRule.RemapModifiersCtrl) releaseList.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
                                 }
 
-                                // Disarm Start Menu with PowerToys Dummy Key (0xFF)
+                                // Disarm Start Menu with AutoHotkey Menu Mask (0xE8) and PowerToys Dummy Key (0xFF)
+                                releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, 0, POWERTOYS_SHORTCUT_FLAG));
+                                releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
                                 releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, 0, POWERTOYS_SHORTCUT_FLAG));
                                 releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
 
@@ -675,10 +690,15 @@ public class KeyRemapManager : IDisposable
                                 lock (_lock)
                                 {
                                     _isShortcutInvoked = false;
-                                    _invokedRule = null;
+                                    // Retain _invokedRule if the physical trigger action key is still held down
+                                    if (!_pressedKeys.Contains(_invokedRule.VirtualKey))
+                                    {
+                                        _invokedRule = null;
+                                    }
                                 }
 
-                                LogMessage?.Invoke("[Remap] Released target modifiers and forwarded physical Win keyup to OS.");
+                                LogMessage?.Invoke("[Remap] PowerToys Case 1: Released target modifiers and suppressed physical Win keyup.");
+                                return (IntPtr)1; // Suppress physical Win keyup so Windows does not receive duplicate keyup
                             }
 
                             lock (_lock)
@@ -691,7 +711,7 @@ public class KeyRemapManager : IDisposable
                             }
                         }
 
-                        // ALWAYS forward modifier events (both down and up) to Windows!
+                        // ALWAYS forward modifier events (both down and up) when not part of an invoked shortcut!
                         return CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
 
@@ -811,6 +831,10 @@ public class KeyRemapManager : IDisposable
                                 _pressedKeys.Remove(vkCode);
                                 wasPressed = true;
                                 ruleToRelease = _invokedRule;
+                                if (!_isShortcutInvoked)
+                                {
+                                    _invokedRule = null;
+                                }
                             }
                         }
 

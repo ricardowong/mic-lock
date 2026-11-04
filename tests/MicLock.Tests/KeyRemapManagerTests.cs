@@ -47,7 +47,7 @@ public class KeyRemapManagerTests
 
         // Win+C combination for Keychron
         string combo7 = KeyRemapManager.FormatKeyCombination(0x43, ctrl: false, alt: false, shift: false, win: true);
-        Assert.Equal("Mic Key (Win+C)", combo7);
+        Assert.Equal("Win+C", combo7);
 
         // Ctrl+Alt+M combination for PowerToys
         string combo8 = KeyRemapManager.FormatKeyCombination(0x4D, ctrl: true, alt: true, shift: false, win: false);
@@ -271,7 +271,7 @@ public class KeyRemapManagerTests
     }
 
     [Fact]
-    public void AppSettings_ClampValues_MigratesLegacyWinCToCtrlShiftAltM()
+    public void AppSettings_ClampValues_PreservesConfiguredWinCWithoutOverwriting()
     {
         var settings = new MicLock.Core.Config.AppSettings
         {
@@ -291,12 +291,10 @@ public class KeyRemapManagerTests
         settings.ClampValues();
 
         var muteRule = settings.KeyBindings.First(b => b.Action == KeyRemapAction.ToggleMute);
-        Assert.Equal(0x4Du, muteRule.VirtualKey);
-        Assert.True(muteRule.ModifiersCtrl);
-        Assert.True(muteRule.ModifiersAlt);
-        Assert.True(muteRule.ModifiersShift);
-        Assert.False(muteRule.ModifiersWin);
-        Assert.Equal("Ctrl+Shift+Alt+M", muteRule.DisplayText);
+        Assert.Equal(0x43u, muteRule.VirtualKey);
+        Assert.True(muteRule.ModifiersWin);
+        Assert.False(muteRule.ModifiersCtrl);
+        Assert.Equal("Win+C", muteRule.DisplayText);
     }
 
     [Fact]
@@ -311,6 +309,39 @@ public class KeyRemapManagerTests
     public void SuppressStartMenu_ExecutesSafely_DoesNotThrow()
     {
         var ex = Record.Exception(() => KeyRemapManager.SuppressStartMenu());
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void KeyBindingRule_RemapProperties_ClonedAndSetProperly()
+    {
+        var rule = new KeyBindingRule
+        {
+            Action = KeyRemapAction.ToggleMute,
+            MappingType = KeyMappingType.Shortcut,
+            VirtualKey = 0x43, // 'C'
+            ModifiersWin = true,
+            DisplayText = "Win+C",
+            RemapVirtualKey = 0x4D, // 'M'
+            RemapModifiersCtrl = true,
+            RemapModifiersAlt = true,
+            RemapModifiersShift = true,
+            RemapDisplayText = "Ctrl+Shift+Alt+M",
+            SendRemapKeys = true
+        };
+
+        var clone = rule.Clone();
+        Assert.Equal(rule.VirtualKey, clone.VirtualKey);
+        Assert.Equal(rule.RemapVirtualKey, clone.RemapVirtualKey);
+        Assert.Equal(rule.RemapDisplayText, clone.RemapDisplayText);
+        Assert.True(clone.SendRemapKeys);
+        Assert.True(clone.HasRemap);
+    }
+
+    [Fact]
+    public void InjectShortcut_ExecutesSafely_DoesNotThrow()
+    {
+        var ex = Record.Exception(() => KeyRemapManager.InjectShortcut(0x4D, ctrl: true, alt: true, shift: true, win: false));
         Assert.Null(ex);
     }
 }

@@ -2,7 +2,7 @@
 ; Builds a zero-elevation, lightweight Windows installer
 
 #define MyAppName "MicAnchor"
-#define MyAppVersion "1.2.7"
+#define MyAppVersion "1.2.8"
 #define MyAppPublisher "MicAnchor Open Source"
 #define MyAppURL "https://github.com/ricardowong/mic-lock"
 #define MyAppExeName "MicLock.exe"

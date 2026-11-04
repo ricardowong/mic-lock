@@ -58,14 +58,18 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     // Key remap UI state
     private KeyRemapActionItem _selectedRemapAction;
-    private string _currentRemapBindingText = "None";
-    private bool _isRecordingKey;
-    private RemapPresetItem? _selectedPreset;
+    private string _currentInputKeyText = "Win+C";
+    private string _currentRemapTargetText = "Ctrl+Shift+Alt+M";
+    private bool _isSendRemapKeysEnabled = true;
+    private string _lastDetectedKeyText = "None";
+    private string _remapStatusText = "Ready - Listening for configured keys";
+    private string _remapSummaryText = string.Empty;
+    private bool _isCapturingInput;
+    private bool _isCapturingTarget;
 
     public ObservableCollection<AudioDeviceInfo> AvailableDevices { get; } = new();
     public ObservableCollection<ActivityLogEntry> ActivityLogs { get; } = new();
     public IReadOnlyList<KeyRemapActionItem> RemapActions { get; }
-    public IReadOnlyList<RemapPresetItem> RemapPresets { get; }
 
     public IAudioLockEngine AudioEngine => _audioEngine;
     public KeyRemapManager KeyRemapManager => _keyRemapManager;
@@ -75,9 +79,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ClearLogsCommand { get; }
     public ICommand ToggleMuteCommand { get; }
     public ICommand CycleRecordingDeviceCommand { get; }
-    public ICommand StartRecordKeyCommand { get; }
-    public ICommand CancelRecordKeyCommand { get; }
-    public ICommand ClearKeyBindingCommand { get; }
+
+    public ICommand StartCaptureInputCommand { get; }
+    public ICommand StartCaptureTargetCommand { get; }
+    public ICommand CancelCaptureCommand { get; }
+    public ICommand ClearInputCommand { get; }
+    public ICommand ClearTargetCommand { get; }
+
+    // Backwards compatibility commands
+    public ICommand StartRecordKeyCommand => StartCaptureInputCommand;
+    public ICommand CancelRecordKeyCommand => CancelCaptureCommand;
+    public ICommand ClearKeyBindingCommand => ClearInputCommand;
 
     public event EventHandler<AudioDeviceInfo>? DeviceSwitched;
     public event EventHandler<int>? VolumeLockEnforced;
@@ -92,26 +104,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
         RemapActions = new List<KeyRemapActionItem>
         {
-            new KeyRemapActionItem { Action = KeyRemapAction.ToggleMute, DisplayName = "Toggle Mute", Description = "Press to toggle microphone mute on and off" },
+            new KeyRemapActionItem { Action = KeyRemapAction.ToggleMute, DisplayName = "Toggle Microphone Mute", Description = "Press to toggle microphone mute on and off" },
+            new KeyRemapActionItem { Action = KeyRemapAction.CycleRecordingDevice, DisplayName = "Switch / Cycle Recording Device", Description = "Cycle to the next active microphone and set as Windows default" },
+            new KeyRemapActionItem { Action = KeyRemapAction.LockVolume, DisplayName = "Lock Volume to Target %", Description = "Instantly restore and enforce the target volume level" },
             new KeyRemapActionItem { Action = KeyRemapAction.PushToTalk, DisplayName = "Push-to-Talk", Description = "Hold to unmute microphone, release to mute" },
             new KeyRemapActionItem { Action = KeyRemapAction.PushToMute, DisplayName = "Push-to-Mute", Description = "Hold to mute microphone (cough button), release to unmute" },
-            new KeyRemapActionItem { Action = KeyRemapAction.CycleRecordingDevice, DisplayName = "Switch / Cycle Recording Device", Description = "Cycle to the next active microphone and set as Windows default" },
-            new KeyRemapActionItem { Action = KeyRemapAction.LockVolume, DisplayName = "Lock Volume to Target %", Description = "Instantly restore and enforce the target volume level" }
-        };
-
-        RemapPresets = new List<RemapPresetItem>
-        {
-            new RemapPresetItem { DisplayName = "Select a Preset...", VirtualKey = 0 },
-            new RemapPresetItem { DisplayName = "Standard Mute Shortcut (Ctrl+Shift+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+M" },
-            new RemapPresetItem { DisplayName = "PowerToys Remap (Ctrl+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ComboText = "Ctrl+Alt+M" },
-            new RemapPresetItem { DisplayName = "Dedicated Hardware Mic Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x83, ComboText = "Dedicated Mic Key" },
-            new RemapPresetItem { DisplayName = "Keychron / Laptop Mic Key (Win+C)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x43, ModifiersWin = true, ComboText = "Mic Key (Win+C)" },
-            new RemapPresetItem { DisplayName = "Cycle Microphone Shortcut (Ctrl+Shift+Alt+D)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x44, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+D" },
-            new RemapPresetItem { DisplayName = "Keyboard Mute Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0xAD, ComboText = "Mute Key" },
-            new RemapPresetItem { DisplayName = "Pause / Break Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x13, ComboText = "Pause" },
-            new RemapPresetItem { DisplayName = "Scroll Lock Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x91, ComboText = "Scroll Lock" },
-            new RemapPresetItem { DisplayName = "Ctrl+Shift+Space", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x20, ModifiersCtrl = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Space" },
-            new RemapPresetItem { DisplayName = "Alt+` (Backquote)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0xC0, ModifiersAlt = true, ComboText = "Alt+`" }
+            new KeyRemapActionItem { Action = KeyRemapAction.None, DisplayName = "Pure Key Remap (Passthrough Only)", Description = "Remap keystrokes without performing any audio actions" }
         };
 
         _selectedRemapAction = RemapActions[0];
@@ -121,9 +119,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         ClearLogsCommand = new RelayCommand(_ => ActivityLogs.Clear());
         ToggleMuteCommand = new RelayCommand(_ => ToggleMute());
         CycleRecordingDeviceCommand = new RelayCommand(_ => CycleRecordingDevice());
-        StartRecordKeyCommand = new RelayCommand(_ => StartRecordingKey());
-        CancelRecordKeyCommand = new RelayCommand(_ => CancelRecordingKey());
-        ClearKeyBindingCommand = new RelayCommand(_ => ClearBinding());
+
+        StartCaptureInputCommand = new RelayCommand(_ => StartCaptureInput());
+        StartCaptureTargetCommand = new RelayCommand(_ => StartCaptureTarget());
+        CancelCaptureCommand = new RelayCommand(_ => CancelCapture());
+        ClearInputCommand = new RelayCommand(_ => ClearInput());
+        ClearTargetCommand = new RelayCommand(_ => ClearTarget());
+
         CheckForUpdatesCommand = new RelayCommand(async _ => await CheckForUpdatesAsync());
 
         // Load persisted settings
@@ -140,8 +142,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _keyRemapManager = keyRemapManager ?? new KeyRemapManager(settings.KeyBindings);
         _keyRemapManager.IsRemapEnabled = settings.IsKeyRemapEnabled;
         _keyRemapManager.ActionTriggered += OnRemapActionTriggered;
-        _keyRemapManager.RecordingStarted += () => _dispatcher.Invoke(() => IsRecordingKey = true);
-        _keyRemapManager.RecordingEnded += () => _dispatcher.Invoke(() => IsRecordingKey = false);
+        _keyRemapManager.RemapExecuted += OnKeyRemapExecuted;
+        _keyRemapManager.LogMessage += OnKeyRemapLogMessage;
+        _keyRemapManager.CaptureEnded += () => _dispatcher.Invoke(() =>
+        {
+            IsCapturingInput = false;
+            IsCapturingTarget = false;
+        });
 
         UpdateRemapDisplayForCurrentAction();
 
@@ -305,171 +312,327 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public string CurrentRemapBindingText
+    public string CurrentInputKeyText
     {
-        get => _currentRemapBindingText;
-        private set => SetProperty(ref _currentRemapBindingText, value);
+        get => _currentInputKeyText;
+        private set => SetProperty(ref _currentInputKeyText, value);
     }
 
-    public bool IsRecordingKey
+    public string CurrentRemapBindingText => CurrentInputKeyText;
+
+    public string CurrentRemapTargetText
     {
-        get => _isRecordingKey;
-        private set
-        {
-            if (SetProperty(ref _isRecordingKey, value))
-            {
-                OnPropertyChanged(nameof(RecordButtonText));
-            }
-        }
+        get => _currentRemapTargetText;
+        private set => SetProperty(ref _currentRemapTargetText, value);
     }
 
-    public string RecordButtonText => _isRecordingKey ? "Press key or shortcut..." : "Type Key / Shortcut";
-
-    public RemapPresetItem? SelectedPreset
+    public bool IsSendRemapKeysEnabled
     {
-        get => _selectedPreset;
+        get => _isSendRemapKeysEnabled;
         set
         {
-            if (SetProperty(ref _selectedPreset, value))
+            if (SetProperty(ref _isSendRemapKeysEnabled, value))
             {
-                if (value != null && value.VirtualKey != 0)
+                var rule = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action);
+                if (rule != null)
                 {
-                    ApplyPreset(value);
+                    rule.SendRemapKeys = value;
+                    _keyRemapManager.UpdateBinding(rule);
+                    var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
+                    if (settingRule != null)
+                    {
+                        settingRule.SendRemapKeys = value;
+                        _settingsManager.Save();
+                    }
+                    UpdateRemapSummary();
                 }
             }
         }
     }
 
-    public void StartRecordingKey()
+    public string LastDetectedKeyText
+    {
+        get => _lastDetectedKeyText;
+        private set => SetProperty(ref _lastDetectedKeyText, value);
+    }
+
+    public string RemapStatusText
+    {
+        get => _remapStatusText;
+        private set => SetProperty(ref _remapStatusText, value);
+    }
+
+    public string RemapSummaryText
+    {
+        get => _remapSummaryText;
+        private set => SetProperty(ref _remapSummaryText, value);
+    }
+
+    public bool IsCapturingInput
+    {
+        get => _isCapturingInput;
+        private set
+        {
+            if (SetProperty(ref _isCapturingInput, value))
+            {
+                OnPropertyChanged(nameof(CaptureInputButtonText));
+                OnPropertyChanged(nameof(RecordButtonText));
+                OnPropertyChanged(nameof(IsRecordingKey));
+            }
+        }
+    }
+
+    public bool IsRecordingKey => IsCapturingInput || IsCapturingTarget;
+
+    public bool IsCapturingTarget
+    {
+        get => _isCapturingTarget;
+        private set
+        {
+            if (SetProperty(ref _isCapturingTarget, value))
+            {
+                OnPropertyChanged(nameof(CaptureTargetButtonText));
+                OnPropertyChanged(nameof(IsRecordingKey));
+            }
+        }
+    }
+
+    public string CaptureInputButtonText => _isCapturingInput ? "Press key now... (Esc)" : "Capture Physical Key";
+    public string CaptureTargetButtonText => _isCapturingTarget ? "Press keys now... (Esc)" : "Capture Remap Target";
+    public string RecordButtonText => CaptureInputButtonText;
+
+    public void StartCaptureInput()
     {
         IsKeyRemapEnabled = true;
-        IsRecordingKey = true;
-        _keyRemapManager.StartRecording(
-            onKeyRecorded: rule =>
+        IsCapturingInput = true;
+        _keyRemapManager.StartCaptureInput(
+            onCaptured: rule =>
             {
                 _dispatcher.Invoke(() =>
                 {
-                    rule.Action = SelectedRemapAction.Action;
-                    _keyRemapManager.UpdateBinding(rule);
+                    var current = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action) ?? new KeyBindingRule { Action = SelectedRemapAction.Action };
+                    current.VirtualKey = rule.VirtualKey;
+                    current.ModifiersCtrl = rule.ModifiersCtrl;
+                    current.ModifiersAlt = rule.ModifiersAlt;
+                    current.ModifiersShift = rule.ModifiersShift;
+                    current.ModifiersWin = rule.ModifiersWin;
+                    current.MappingType = rule.MappingType;
+                    current.DisplayText = rule.DisplayText;
+                    current.SuppressOriginalKey = true;
 
-                    var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
+                    _keyRemapManager.UpdateBinding(current);
+
+                    var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == current.Action);
                     if (settingRule != null)
                     {
-                        settingRule.MappingType = rule.MappingType;
-                        settingRule.VirtualKey = rule.VirtualKey;
-                        settingRule.ModifiersCtrl = rule.ModifiersCtrl;
-                        settingRule.ModifiersAlt = rule.ModifiersAlt;
-                        settingRule.ModifiersShift = rule.ModifiersShift;
-                        settingRule.ModifiersWin = rule.ModifiersWin;
-                        settingRule.SuppressOriginalKey = rule.SuppressOriginalKey;
-                        settingRule.DisplayText = rule.DisplayText;
+                        settingRule.VirtualKey = current.VirtualKey;
+                        settingRule.ModifiersCtrl = current.ModifiersCtrl;
+                        settingRule.ModifiersAlt = current.ModifiersAlt;
+                        settingRule.ModifiersShift = current.ModifiersShift;
+                        settingRule.ModifiersWin = current.ModifiersWin;
+                        settingRule.MappingType = current.MappingType;
+                        settingRule.DisplayText = current.DisplayText;
                     }
                     else
                     {
-                        _settingsManager.Current.KeyBindings.Add(rule.Clone());
+                        _settingsManager.Current.KeyBindings.Add(current.Clone());
                     }
                     _settingsManager.Current.IsKeyRemapEnabled = true;
                     _settingsManager.Save();
 
-                    CurrentRemapBindingText = rule.DisplayText;
-                    IsRecordingKey = false;
+                    CurrentInputKeyText = current.DisplayText;
+                    IsCapturingInput = false;
+                    UpdateRemapSummary();
+                    AddActivityLog($"[Remap Config] Set input key for '{SelectedRemapAction.DisplayName}' to '{current.DisplayText}'");
                 });
             },
             onCancelled: () =>
             {
                 _dispatcher.Invoke(() =>
                 {
-                    IsRecordingKey = false;
+                    IsCapturingInput = false;
                 });
             });
     }
 
-    public void CancelRecordingKey()
+    public void StartCaptureTarget()
     {
-        _keyRemapManager.CancelRecording();
-        IsRecordingKey = false;
-    }
-
-    public void ClearBinding()
-    {
-        var rule = new KeyBindingRule
-        {
-            Action = SelectedRemapAction.Action,
-            MappingType = KeyMappingType.SingleKey,
-            VirtualKey = 0,
-            ModifiersCtrl = false,
-            ModifiersAlt = false,
-            ModifiersShift = false,
-            ModifiersWin = false,
-            SuppressOriginalKey = true,
-            DisplayText = "None"
-        };
-
-        _keyRemapManager.UpdateBinding(rule);
-
-        var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
-        if (settingRule != null)
-        {
-            settingRule.MappingType = KeyMappingType.SingleKey;
-            settingRule.VirtualKey = 0;
-            settingRule.ModifiersCtrl = false;
-            settingRule.ModifiersAlt = false;
-            settingRule.ModifiersShift = false;
-            settingRule.ModifiersWin = false;
-            settingRule.DisplayText = "None";
-        }
-        _settingsManager.Save();
-
-        CurrentRemapBindingText = "None";
-    }
-
-    public void ApplyPreset(RemapPresetItem? preset)
-    {
-        if (preset == null || preset.VirtualKey == 0) return;
-
         IsKeyRemapEnabled = true;
+        IsCapturingTarget = true;
+        _keyRemapManager.StartCaptureTarget(
+            onCaptured: (vk, ctrl, alt, shift, win, displayCombo) =>
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    var current = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action) ?? new KeyBindingRule { Action = SelectedRemapAction.Action };
+                    current.RemapVirtualKey = vk;
+                    current.RemapModifiersCtrl = ctrl;
+                    current.RemapModifiersAlt = alt;
+                    current.RemapModifiersShift = shift;
+                    current.RemapModifiersWin = win;
+                    current.RemapDisplayText = displayCombo;
+                    current.SendRemapKeys = true;
 
-        var rule = new KeyBindingRule
+                    _keyRemapManager.UpdateBinding(current);
+
+                    var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == current.Action);
+                    if (settingRule != null)
+                    {
+                        settingRule.RemapVirtualKey = current.RemapVirtualKey;
+                        settingRule.RemapModifiersCtrl = current.RemapModifiersCtrl;
+                        settingRule.RemapModifiersAlt = current.RemapModifiersAlt;
+                        settingRule.RemapModifiersShift = current.RemapModifiersShift;
+                        settingRule.RemapModifiersWin = current.RemapModifiersWin;
+                        settingRule.RemapDisplayText = current.RemapDisplayText;
+                        settingRule.SendRemapKeys = current.SendRemapKeys;
+                    }
+                    else
+                    {
+                        _settingsManager.Current.KeyBindings.Add(current.Clone());
+                    }
+                    _settingsManager.Save();
+
+                    CurrentRemapTargetText = current.RemapDisplayText;
+                    IsSendRemapKeysEnabled = true;
+                    IsCapturingTarget = false;
+                    UpdateRemapSummary();
+                    AddActivityLog($"[Remap Config] Set target remapped shortcut for '{SelectedRemapAction.DisplayName}' to '{current.RemapDisplayText}'");
+                });
+            },
+            onCancelled: () =>
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    IsCapturingTarget = false;
+                });
+            });
+    }
+
+    public void CancelCapture()
+    {
+        _keyRemapManager.CancelCapture();
+        IsCapturingInput = false;
+        IsCapturingTarget = false;
+    }
+
+    public void ClearInput()
+    {
+        var current = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action);
+        if (current != null)
         {
-            Action = SelectedRemapAction.Action,
-            MappingType = preset.MappingType,
-            VirtualKey = preset.VirtualKey,
-            ModifiersCtrl = preset.ModifiersCtrl,
-            ModifiersAlt = preset.ModifiersAlt,
-            ModifiersShift = preset.ModifiersShift,
-            ModifiersWin = preset.ModifiersWin,
-            SuppressOriginalKey = true,
-            DisplayText = preset.ComboText
-        };
+            current.VirtualKey = 0;
+            current.ModifiersCtrl = false;
+            current.ModifiersAlt = false;
+            current.ModifiersShift = false;
+            current.ModifiersWin = false;
+            current.DisplayText = "None";
+            _keyRemapManager.UpdateBinding(current);
 
-        _keyRemapManager.UpdateBinding(rule);
-
-        var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == rule.Action);
-        if (settingRule != null)
-        {
-            settingRule.MappingType = rule.MappingType;
-            settingRule.VirtualKey = rule.VirtualKey;
-            settingRule.ModifiersCtrl = rule.ModifiersCtrl;
-            settingRule.ModifiersAlt = rule.ModifiersAlt;
-            settingRule.ModifiersShift = rule.ModifiersShift;
-            settingRule.ModifiersWin = rule.ModifiersWin;
-            settingRule.SuppressOriginalKey = rule.SuppressOriginalKey;
-            settingRule.DisplayText = rule.DisplayText;
+            var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == current.Action);
+            if (settingRule != null)
+            {
+                settingRule.VirtualKey = 0;
+                settingRule.ModifiersCtrl = false;
+                settingRule.ModifiersAlt = false;
+                settingRule.ModifiersShift = false;
+                settingRule.ModifiersWin = false;
+                settingRule.DisplayText = "None";
+            }
+            _settingsManager.Save();
+            CurrentInputKeyText = "None";
+            UpdateRemapSummary();
+            AddActivityLog($"[Remap Config] Cleared physical input key for '{SelectedRemapAction.DisplayName}'");
         }
-        else
-        {
-            _settingsManager.Current.KeyBindings.Add(rule.Clone());
-        }
-        _settingsManager.Current.IsKeyRemapEnabled = true;
-        _settingsManager.Save();
+    }
 
-        CurrentRemapBindingText = rule.DisplayText;
+    public void ClearTarget()
+    {
+        var current = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action);
+        if (current != null)
+        {
+            current.RemapVirtualKey = 0;
+            current.RemapModifiersCtrl = false;
+            current.RemapModifiersAlt = false;
+            current.RemapModifiersShift = false;
+            current.RemapModifiersWin = false;
+            current.RemapDisplayText = "None";
+            current.SendRemapKeys = false;
+            _keyRemapManager.UpdateBinding(current);
+
+            var settingRule = _settingsManager.Current.KeyBindings.FirstOrDefault(b => b.Action == current.Action);
+            if (settingRule != null)
+            {
+                settingRule.RemapVirtualKey = 0;
+                settingRule.RemapModifiersCtrl = false;
+                settingRule.RemapModifiersAlt = false;
+                settingRule.RemapModifiersShift = false;
+                settingRule.RemapModifiersWin = false;
+                settingRule.RemapDisplayText = "None";
+                settingRule.SendRemapKeys = false;
+            }
+            _settingsManager.Save();
+            CurrentRemapTargetText = "None";
+            IsSendRemapKeysEnabled = false;
+            UpdateRemapSummary();
+            AddActivityLog($"[Remap Config] Cleared remap target for '{SelectedRemapAction.DisplayName}'");
+        }
     }
 
     private void UpdateRemapDisplayForCurrentAction()
     {
         var rule = _keyRemapManager.GetBindingForAction(SelectedRemapAction.Action);
-        CurrentRemapBindingText = string.IsNullOrEmpty(rule?.DisplayText) ? "None" : rule.DisplayText;
+        if (rule != null)
+        {
+            CurrentInputKeyText = string.IsNullOrEmpty(rule.DisplayText) ? "None" : rule.DisplayText;
+            CurrentRemapTargetText = string.IsNullOrEmpty(rule.RemapDisplayText) ? "None" : rule.RemapDisplayText;
+            _isSendRemapKeysEnabled = rule.SendRemapKeys;
+            OnPropertyChanged(nameof(IsSendRemapKeysEnabled));
+        }
+        else
+        {
+            CurrentInputKeyText = "None";
+            CurrentRemapTargetText = "None";
+            _isSendRemapKeysEnabled = false;
+            OnPropertyChanged(nameof(IsSendRemapKeysEnabled));
+        }
+        UpdateRemapSummary();
+    }
+
+    private void UpdateRemapSummary()
+    {
+        string input = CurrentInputKeyText;
+        string target = CurrentRemapTargetText;
+        string action = SelectedRemapAction.DisplayName;
+
+        if (input == "None")
+        {
+            RemapSummaryText = $"No physical input key assigned for '{action}'. Click 'Capture Physical Key' to bind.";
+        }
+        else if (target != "None" && IsSendRemapKeysEnabled)
+        {
+            RemapSummaryText = $"When [{input}] is pressed: Windows key is suppressed, remapped to [{target}] via SendInput, and triggers [{action}].";
+        }
+        else
+        {
+            RemapSummaryText = $"When [{input}] is pressed: Windows key is suppressed and directly triggers [{action}].";
+        }
+    }
+
+    private void OnKeyRemapExecuted(string input, string target, string action)
+    {
+        _dispatcher.Invoke(() =>
+        {
+            LastDetectedKeyText = $"{input} (at {DateTime.Now:HH:mm:ss})";
+            RemapStatusText = $"Active: {input} ➔ {target} [{action}]";
+        });
+    }
+
+    private void OnKeyRemapLogMessage(string msg)
+    {
+        _dispatcher.Invoke(() =>
+        {
+            AddActivityLog(msg);
+        });
     }
 
     private void OnRemapActionTriggered(KeyRemapAction action, KeyPressState state)
@@ -816,6 +979,24 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 CurrentVolumePercent = device.CurrentVolumePercent;
                 IsMuted = device.IsMuted;
                 OnPropertyChanged(nameof(StatusTooltip));
+            }
+        });
+    }
+
+    public void AddActivityLog(string message, LogLevel level = LogLevel.Info)
+    {
+        _dispatcher.Invoke(() =>
+        {
+            var entry = new ActivityLogEntry
+            {
+                Timestamp = DateTime.Now,
+                Message = message,
+                Level = level
+            };
+            ActivityLogs.Insert(0, entry);
+            if (ActivityLogs.Count > _settingsManager.Current.MaxLogEntries)
+            {
+                ActivityLogs.RemoveAt(ActivityLogs.Count - 1);
             }
         });
     }

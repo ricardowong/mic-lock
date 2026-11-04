@@ -6,7 +6,8 @@ public enum KeyRemapAction
     PushToTalk = 1,
     PushToMute = 2,
     CycleRecordingDevice = 3,
-    LockVolume = 4
+    LockVolume = 4,
+    None = 5 // Pure remapper (injects remapped keystroke only)
 }
 
 public enum KeyMappingType
@@ -17,7 +18,10 @@ public enum KeyMappingType
 
 public class KeyBindingRule
 {
+    // Action to execute
     public KeyRemapAction Action { get; set; } = KeyRemapAction.ToggleMute;
+
+    // Physical Input Key/Shortcut (what the user presses on the physical keyboard)
     public KeyMappingType MappingType { get; set; } = KeyMappingType.SingleKey;
     public uint VirtualKey { get; set; } = 0;
     public bool ModifiersCtrl { get; set; } = false;
@@ -27,8 +31,18 @@ public class KeyBindingRule
     public bool SuppressOriginalKey { get; set; } = true;
     public string DisplayText { get; set; } = "None";
 
+    // Remapped Target Key/Shortcut (PowerToys remapping target, e.g. Ctrl+Shift+Alt+M)
+    public uint RemapVirtualKey { get; set; } = 0;
+    public bool RemapModifiersCtrl { get; set; } = false;
+    public bool RemapModifiersAlt { get; set; } = false;
+    public bool RemapModifiersShift { get; set; } = false;
+    public bool RemapModifiersWin { get; set; } = false;
+    public string RemapDisplayText { get; set; } = "None";
+    public bool SendRemapKeys { get; set; } = false;
+
     public bool IsEmpty => VirtualKey == 0;
     public bool HasModifiers => ModifiersCtrl || ModifiersAlt || ModifiersShift || ModifiersWin;
+    public bool HasRemap => RemapVirtualKey != 0;
 
     public KeyBindingRule Clone()
     {
@@ -42,7 +56,14 @@ public class KeyBindingRule
             ModifiersShift = ModifiersShift,
             ModifiersWin = ModifiersWin,
             SuppressOriginalKey = SuppressOriginalKey,
-            DisplayText = DisplayText
+            DisplayText = DisplayText,
+            RemapVirtualKey = RemapVirtualKey,
+            RemapModifiersCtrl = RemapModifiersCtrl,
+            RemapModifiersAlt = RemapModifiersAlt,
+            RemapModifiersShift = RemapModifiersShift,
+            RemapModifiersWin = RemapModifiersWin,
+            RemapDisplayText = RemapDisplayText,
+            SendRemapKeys = SendRemapKeys
         };
     }
 
@@ -54,13 +75,20 @@ public class KeyBindingRule
             {
                 Action = KeyRemapAction.ToggleMute,
                 MappingType = KeyMappingType.Shortcut,
-                VirtualKey = 0x4D, // 'M' (Ctrl+Shift+Alt+M standard mute shortcut)
-                ModifiersCtrl = true,
-                ModifiersAlt = true,
-                ModifiersShift = true,
-                ModifiersWin = false,
+                VirtualKey = 0x43, // 'C' (Keychron physical mic key sends Win+C)
+                ModifiersCtrl = false,
+                ModifiersAlt = false,
+                ModifiersShift = false,
+                ModifiersWin = true,
                 SuppressOriginalKey = true,
-                DisplayText = "Ctrl+Shift+Alt+M"
+                DisplayText = "Win+C",
+                RemapVirtualKey = 0x4D, // 'M'
+                RemapModifiersCtrl = true,
+                RemapModifiersAlt = true,
+                RemapModifiersShift = true,
+                RemapModifiersWin = false,
+                RemapDisplayText = "Ctrl+Shift+Alt+M",
+                SendRemapKeys = true
             },
             new KeyBindingRule
             {
@@ -72,7 +100,10 @@ public class KeyBindingRule
                 ModifiersShift = true,
                 ModifiersWin = false,
                 SuppressOriginalKey = true,
-                DisplayText = "Ctrl+Shift+Alt+D"
+                DisplayText = "Ctrl+Shift+Alt+D",
+                RemapVirtualKey = 0,
+                RemapDisplayText = "None",
+                SendRemapKeys = false
             },
             new KeyBindingRule
             {
@@ -84,29 +115,28 @@ public class KeyBindingRule
                 ModifiersShift = true,
                 ModifiersWin = false,
                 SuppressOriginalKey = true,
-                DisplayText = "Ctrl+Shift+Alt+L"
+                DisplayText = "Ctrl+Shift+Alt+L",
+                RemapVirtualKey = 0,
+                RemapDisplayText = "None",
+                SendRemapKeys = false
             },
             new KeyBindingRule
             {
                 Action = KeyRemapAction.PushToTalk,
                 VirtualKey = 0,
-                ModifiersCtrl = false,
-                ModifiersAlt = false,
-                ModifiersShift = false,
-                ModifiersWin = false,
-                SuppressOriginalKey = true,
-                DisplayText = "None"
+                DisplayText = "None",
+                RemapVirtualKey = 0,
+                RemapDisplayText = "None",
+                SendRemapKeys = false
             },
             new KeyBindingRule
             {
                 Action = KeyRemapAction.PushToMute,
                 VirtualKey = 0,
-                ModifiersCtrl = false,
-                ModifiersAlt = false,
-                ModifiersShift = false,
-                ModifiersWin = false,
-                SuppressOriginalKey = true,
-                DisplayText = "None"
+                DisplayText = "None",
+                RemapVirtualKey = 0,
+                RemapDisplayText = "None",
+                SendRemapKeys = false
             }
         };
     }

@@ -408,7 +408,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- 3. Keyboard Remapping Engine Card -->
+            <!-- 3. Keyboard Remapping Engine Card (PowerToys Remapper Essence) -->
             <Border Grid.Row="3" Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="10" Padding="14,12" Margin="0,0,0,10">
                 <StackPanel>
                     <Grid Margin="0,0,0,8">
@@ -417,18 +417,33 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Keyboard Remapping" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
-                            <TextBlock Text="Control your mic with a keyboard shortcut or dedicated key" FontSize="10.5" Foreground="#64748B" Margin="0,1,0,0"/>
+                            <TextBlock Text="Keyboard Remapping Engine" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="Intercept hardware keys, suppress Windows key, and remap to custom shortcuts" FontSize="10.5" Foreground="#64748B" Margin="0,1,0,0"/>
                         </StackPanel>
                         <CheckBox Grid.Column="1" IsChecked="{Binding IsKeyRemapEnabled, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
                     </Grid>
 
+                    <!-- Live Hardware Detection & Status Banner -->
+                    <Border Background="#0F172A" CornerRadius="6" Padding="10,6" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Last Pressed: " FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding LastDetectedKeyText}" FontSize="11.5" FontWeight="Bold" Foreground="#38BDF8" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding RemapStatusText}" FontSize="10.5" FontWeight="SemiBold" Foreground="#4ADE80" HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </Border>
+
                     <!-- Action Selector Dropdown -->
-                    <TextBlock Text="Select Action to Remap:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,4"/>
+                    <TextBlock Text="Action to Configure:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,4"/>
                     <ComboBox ItemsSource="{Binding RemapActions}"
                               SelectedItem="{Binding SelectedRemapAction, Mode=TwoWay}"
                               DisplayMemberPath="DisplayName"
-                              Height="32"
+                              Height="30"
                               Padding="8,4"
                               FontSize="12"
                               Background="#FFFFFF"
@@ -440,60 +455,77 @@
                                FontSize="10.5"
                                Foreground="#64748B"
                                TextWrapping="Wrap"
-                               Margin="2,0,0,8"/>
+                               Margin="2,0,0,10"/>
 
-                    <!-- Assigned Key & Recorder Row -->
-                    <Grid Margin="0,0,0,8">
+                    <!-- 2-Pillar Remapping Visual Box -->
+                    <Grid Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- Key Display Pill -->
-                        <Border Background="#0F172A" CornerRadius="6" Padding="10,5" Margin="0,0,8,0" VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="Assigned: " FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding CurrentRemapBindingText}"
-                                           FontSize="12"
-                                           FontWeight="Bold"
-                                           Foreground="#38BDF8"
-                                           VerticalAlignment="Center"/>
+                        <!-- Pillar 1: Physical Input (Keychron / Keyboard) -->
+                        <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8">
+                            <StackPanel>
+                                <TextBlock Text="1. Physical Input Key" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                <Border Background="#0F172A" CornerRadius="6" Padding="8,4" Margin="0,0,0,8" HorizontalAlignment="Center" MinWidth="110">
+                                    <TextBlock Text="{Binding CurrentInputKeyText}" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Center"/>
+                                </Border>
+                                <Button Command="{Binding StartCaptureInputCommand}"
+                                        Content="{Binding CaptureInputButtonText}"
+                                        Style="{StaticResource RecordKeyButtonStyle}"
+                                        Height="26"
+                                        FontSize="10.5"
+                                        Margin="0,0,0,4"/>
+                                <Button Command="{Binding ClearInputCommand}"
+                                        Content="Clear Input"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Height="24"
+                                        FontSize="10"/>
                             </StackPanel>
                         </Border>
 
-                        <!-- Record Key Button -->
-                        <Button Grid.Column="1"
-                                Command="{Binding StartRecordKeyCommand}"
-                                Content="{Binding RecordButtonText}"
-                                Style="{StaticResource RecordKeyButtonStyle}"
-                                Margin="0,0,6,0"/>
+                        <!-- Center Arrow -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,0">
+                            <TextBlock Text="➔" FontSize="18" FontWeight="Bold" Foreground="#0D9488" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Remaps" FontSize="9.5" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                        </StackPanel>
 
-                        <!-- Clear Key Button -->
-                        <Button Grid.Column="2"
-                                Command="{Binding ClearKeyBindingCommand}"
-                                Content="Clear"
-                                Style="{StaticResource ActionButtonStyle}"/>
+                        <!-- Pillar 2: Remapped Target Shortcut (PowerToys Injected) -->
+                        <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8">
+                            <StackPanel>
+                                <TextBlock Text="2. Remapped Shortcut" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                <Border Background="#0F172A" CornerRadius="6" Padding="8,4" Margin="0,0,0,8" HorizontalAlignment="Center" MinWidth="110">
+                                    <TextBlock Text="{Binding CurrentRemapTargetText}" FontSize="12" FontWeight="Bold" Foreground="#818CF8" HorizontalAlignment="Center"/>
+                                </Border>
+                                <Button Command="{Binding StartCaptureTargetCommand}"
+                                        Content="{Binding CaptureTargetButtonText}"
+                                        Style="{StaticResource RecordKeyButtonStyle}"
+                                        Height="26"
+                                        FontSize="10.5"
+                                        Margin="0,0,0,4"/>
+                                <Button Command="{Binding ClearTargetCommand}"
+                                        Content="Clear Remap"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Height="24"
+                                        FontSize="10"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
 
-                    <!-- Quick Key Presets Dropdown -->
-                    <Grid Margin="0,2,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Or Choose Preset: " FontSize="11" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <ComboBox Grid.Column="1"
-                                  ItemsSource="{Binding RemapPresets}"
-                                  SelectedItem="{Binding SelectedPreset, Mode=TwoWay}"
-                                  DisplayMemberPath="DisplayName"
-                                  Height="28"
-                                  FontSize="11.5"
-                                  Padding="6,2"
-                                  Background="#FFFFFF"
-                                  BorderBrush="#CBD5E1"
-                                  BorderThickness="1"/>
-                    </Grid>
+                    <!-- SendRemapKeys Checkbox & Summary -->
+                    <CheckBox Content="Inject Remapped Shortcut into Windows (SendInput)"
+                              IsChecked="{Binding IsSendRemapKeysEnabled, Mode=TwoWay}"
+                              Style="{StaticResource FluentCheckbox}"
+                              Margin="0,0,0,6"/>
+
+                    <Border Background="#F1F5F9" CornerRadius="6" Padding="10,6">
+                        <TextBlock Text="{Binding RemapSummaryText}"
+                                   FontSize="11"
+                                   Foreground="#334155"
+                                   TextWrapping="Wrap"/>
+                    </Border>
                 </StackPanel>
             </Border>
 

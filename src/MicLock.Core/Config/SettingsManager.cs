@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MicLock.Core.Config;
 
@@ -8,7 +9,8 @@ public class SettingsManager
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private readonly string _settingsFilePath;
@@ -90,6 +92,41 @@ public class SettingsManager
             {
                 File.Move(tempFile, _settingsFilePath);
             }
+        }
+    }
+
+    public string SettingsFilePath => _settingsFilePath;
+
+    public void ExportSettings(string destinationPath)
+    {
+        lock (_lock)
+        {
+            Current.ClampValues();
+            string json = JsonSerializer.Serialize(Current, JsonOptions);
+            File.WriteAllText(destinationPath, json);
+        }
+    }
+
+    public bool ImportSettings(string sourcePath)
+    {
+        lock (_lock)
+        {
+            try
+            {
+                if (File.Exists(sourcePath))
+                {
+                    string json = File.ReadAllText(sourcePath);
+                    var loaded = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+                    if (loaded != null)
+                    {
+                        loaded.ClampValues();
+                        Save(loaded);
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
         }
     }
 }

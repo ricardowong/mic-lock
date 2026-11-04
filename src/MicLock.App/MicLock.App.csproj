@@ -16,9 +16,9 @@
     <AssemblyTitle>MicAnchor</AssemblyTitle>
     <Product>MicAnchor</Product>
     <Description>MicAnchor - Windows Microphone Volume Lock and Hotkey Remap Utility</Description>
-    <Version>1.2.10</Version>
-    <AssemblyVersion>1.2.10.0</AssemblyVersion>
-    <FileVersion>1.2.10.0</FileVersion>
+    <Version>1.3.0</Version>
+    <AssemblyVersion>1.3.0.0</AssemblyVersion>
+    <FileVersion>1.3.0.0</FileVersion>
     <Company>MicAnchor Open Source Project</Company>
   </PropertyGroup>
 

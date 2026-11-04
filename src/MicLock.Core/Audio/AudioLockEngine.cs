@@ -17,8 +17,21 @@ public class AudioLockEngine : IAudioLockEngine
     private bool _isRevertingVolume;
     private bool _lastKnownMute;
     private bool _disposed;
+    private bool _isMicDeviceLocked = true;
 
     public bool IsLocked { get; set; } = true;
+    public bool IsMicDeviceLocked
+    {
+        get => _isMicDeviceLocked;
+        set
+        {
+            _isMicDeviceLocked = value;
+            if (value && !string.IsNullOrWhiteSpace(_pinnedDeviceId))
+            {
+                PolicyConfigClient.SetDefaultDeviceAllRoles(_pinnedDeviceId);
+            }
+        }
+    }
     public int TargetVolumePercent { get; set; } = 100;
     public AudioDeviceInfo? ActiveDevice { get; private set; }
 
@@ -51,6 +64,7 @@ public class AudioLockEngine : IAudioLockEngine
     public event EventHandler<int>? VolumeChanged;
     public event EventHandler<bool>? MuteChanged;
     public event EventHandler<VolumeRestoredEventArgs>? VolumeRestored;
+    public event EventHandler<string>? DefaultDeviceRestored;
     public event EventHandler<AudioDeviceInfo?>? ActiveDeviceChanged;
     public event EventHandler<ActivityLogEntry>? LogEntryAdded;
 
@@ -128,7 +142,12 @@ public class AudioLockEngine : IAudioLockEngine
                 ? null
                 : deviceId;
 
-            return BindToTargetDevice();
+            bool bound = BindToTargetDevice();
+            if (bound && _isMicDeviceLocked && !string.IsNullOrWhiteSpace(_pinnedDeviceId))
+            {
+                PolicyConfigClient.SetDefaultDeviceAllRoles(_pinnedDeviceId);
+            }
+            return bound;
         }
     }
 
@@ -349,6 +368,8 @@ public class AudioLockEngine : IAudioLockEngine
 
     private void OnSystemDefaultDeviceChanged(DataFlow flow, Role role, string pwstrDefaultDeviceId)
     {
+        if (flow != DataFlow.Capture) return;
+
         if (_pinnedDeviceId == null)
         {
             EmitLog(LogLevel.Info, "Windows default microphone changed. Re-binding endpoint...");
@@ -356,6 +377,12 @@ public class AudioLockEngine : IAudioLockEngine
             {
                 BindToTargetDevice();
             }
+        }
+        else if (_isMicDeviceLocked && !string.Equals(_pinnedDeviceId, pwstrDefaultDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            EmitLog(LogLevel.Revert, $"Blocked external default microphone switch to '{pwstrDefaultDeviceId}'. Re-enforcing pinned microphone...");
+            PolicyConfigClient.SetDefaultDeviceAllRoles(_pinnedDeviceId);
+            DefaultDeviceRestored?.Invoke(this, ActiveDevice?.Name ?? "Pinned Microphone");
         }
     }
 

@@ -133,4 +133,44 @@ public class SettingsManagerTests : IDisposable
         // ClampValues auto-enables IsKeyRemapEnabled if active bindings exist
         Assert.True(reloaded.Current.IsKeyRemapEnabled);
     }
+
+    [Fact]
+    public void ExportAndImportSettings_WorksSeamlessly()
+    {
+        string exportPath = Path.Combine(Path.GetTempPath(), $"miclock_export_{Guid.NewGuid()}.json");
+        try
+        {
+            var manager1 = new SettingsManager(_tempPath);
+            manager1.Current.TargetVolumePercent = 77;
+            manager1.Current.IsMicLockEnabled = true;
+            manager1.Current.SelectedDeviceName = "Test USB Microphone";
+            manager1.Save();
+
+            manager1.ExportSettings(exportPath);
+            Assert.True(File.Exists(exportPath));
+            string jsonText = File.ReadAllText(exportPath);
+            Assert.Contains("\"TargetVolumePercent\": 77", jsonText);
+            // Verify string enum serialization
+            Assert.Contains("\"ToggleMute\"", jsonText);
+
+            string targetPath = Path.Combine(Path.GetTempPath(), $"miclock_imported_{Guid.NewGuid()}.json");
+            try
+            {
+                var manager2 = new SettingsManager(targetPath);
+                bool success = manager2.ImportSettings(exportPath);
+                Assert.True(success);
+                Assert.Equal(77, manager2.Current.TargetVolumePercent);
+                Assert.True(manager2.Current.IsMicLockEnabled);
+                Assert.Equal("Test USB Microphone", manager2.Current.SelectedDeviceName);
+            }
+            finally
+            {
+                if (File.Exists(targetPath)) File.Delete(targetPath);
+            }
+        }
+        finally
+        {
+            if (File.Exists(exportPath)) File.Delete(exportPath);
+        }
+    }
 }

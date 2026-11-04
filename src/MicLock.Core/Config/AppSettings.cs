@@ -6,6 +6,7 @@ public class AppSettings
 {
     public string? SelectedDeviceId { get; set; } = null;
     public string? SelectedDeviceName { get; set; } = null;
+    public bool IsMicLockEnabled { get; set; } = true;
     public int TargetVolumePercent { get; set; } = 100;
     public bool IsLockEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; } = true;

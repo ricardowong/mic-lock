@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
@@ -46,6 +48,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _targetVolumePercent;
     private int _currentVolumePercent;
     private bool _isLocked;
+    private bool _isMicLockEnabled = true;
+    private bool _isSettingsOpen;
     private bool _isMuted;
     private bool _startWithWindows;
     private bool _startMinimized;
@@ -79,6 +83,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ClearLogsCommand { get; }
     public ICommand ToggleMuteCommand { get; }
     public ICommand CycleRecordingDeviceCommand { get; }
+
+    public ICommand ToggleSettingsCommand { get; }
+    public ICommand BackupSettingsCommand { get; }
+    public ICommand RestoreSettingsCommand { get; }
+    public ICommand OpenSettingsFolderCommand { get; }
 
     public ICommand StartCaptureInputCommand { get; }
     public ICommand StartCaptureTargetCommand { get; }
@@ -120,6 +129,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         ToggleMuteCommand = new RelayCommand(_ => ToggleMute());
         CycleRecordingDeviceCommand = new RelayCommand(_ => CycleRecordingDevice());
 
+        ToggleSettingsCommand = new RelayCommand(_ => IsSettingsOpen = !IsSettingsOpen);
+        BackupSettingsCommand = new RelayCommand(_ => ExecuteBackupSettings());
+        RestoreSettingsCommand = new RelayCommand(_ => ExecuteRestoreSettings());
+        OpenSettingsFolderCommand = new RelayCommand(_ => ExecuteOpenSettingsFolder());
+
         StartCaptureInputCommand = new RelayCommand(_ => StartCaptureInput());
         StartCaptureTargetCommand = new RelayCommand(_ => StartCaptureTarget());
         CancelCaptureCommand = new RelayCommand(_ => CancelCapture());
@@ -132,6 +146,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var settings = _settingsManager.Current;
         _targetVolumePercent = settings.TargetVolumePercent;
         _isLocked = settings.IsLockEnabled;
+        _isMicLockEnabled = settings.IsMicLockEnabled;
         _startWithWindows = settings.StartWithWindows;
         _startMinimized = settings.StartMinimized;
         _showNotifications = settings.ShowNotifications;
@@ -162,6 +177,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         // Initialize audio engine
         _audioEngine.TargetVolumePercent = _targetVolumePercent;
         _audioEngine.IsLocked = _isLocked;
+        _audioEngine.IsMicDeviceLocked = _isMicLockEnabled;
 
         RefreshDevices();
     }
@@ -238,6 +254,33 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(StatusTooltip));
             }
         }
+    }
+
+    public bool IsMicLockEnabled
+    {
+        get => _isMicLockEnabled;
+        set
+        {
+            if (SetProperty(ref _isMicLockEnabled, value))
+            {
+                _audioEngine.IsMicDeviceLocked = value;
+                _settingsManager.Current.IsMicLockEnabled = value;
+                _settingsManager.Save();
+
+                if (value && SelectedDevice != null && !SelectedDevice.IsDefault)
+                {
+                    PolicyConfigClient.SetDefaultDeviceAllRoles(SelectedDevice.Id);
+                }
+
+                AddActivityLog(value ? $"[Mic Lock] Locked Windows default to '{SelectedDevice?.Name}'" : "[Mic Lock] Unlocked default microphone selection");
+            }
+        }
+    }
+
+    public bool IsSettingsOpen
+    {
+        get => _isSettingsOpen;
+        set => SetProperty(ref _isSettingsOpen, value);
     }
 
     public bool IsMuted
@@ -950,6 +993,92 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             TargetVolumePercent = preset;
         }
+    }
+
+    private void ExecuteBackupSettings()
+    {
+        try
+        {
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = $"micanchor-settings-backup-{DateTime.Now:yyyyMMdd}.json",
+                DefaultExt = ".json",
+                Filter = "JSON Configuration Files (*.json)|*.json|All Files (*.*)|*.*"
+            };
+            if (sfd.ShowDialog() == true)
+            {
+                _settingsManager.ExportSettings(sfd.FileName);
+                AddActivityLog($"[Settings Backup] Exported configuration to: {Path.GetFileName(sfd.FileName)}");
+                System.Windows.MessageBox.Show($"Settings successfully exported to:\n{sfd.FileName}", "MicAnchor Backup", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Failed to export settings:\n{ex.Message}", "Backup Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExecuteRestoreSettings()
+    {
+        try
+        {
+            var ofd = new Microsoft.Win32.OpenFileDialog
+            {
+                DefaultExt = ".json",
+                Filter = "JSON Configuration Files (*.json)|*.json|All Files (*.*)|*.*"
+            };
+            if (ofd.ShowDialog() == true)
+            {
+                bool success = _settingsManager.ImportSettings(ofd.FileName);
+                if (success)
+                {
+                    var s = _settingsManager.Current;
+                    TargetVolumePercent = s.TargetVolumePercent;
+                    IsLocked = s.IsLockEnabled;
+                    IsMicLockEnabled = s.IsMicLockEnabled;
+                    StartWithWindows = s.StartWithWindows;
+                    StartMinimized = s.StartMinimized;
+                    ShowNotifications = s.ShowNotifications;
+                    KeepOverlayWhenMuted = s.KeepOverlayWhenMuted;
+                    OverlayOpacityPercent = (int)Math.Round(s.OverlayOpacityWhenMuted * 100);
+
+                    foreach (var rule in s.KeyBindings)
+                    {
+                        _keyRemapManager.UpdateBinding(rule);
+                    }
+                    IsKeyRemapEnabled = s.IsKeyRemapEnabled;
+                    UpdateRemapDisplayForCurrentAction();
+                    RefreshDevices();
+                    AddActivityLog($"[Settings Restore] Successfully imported settings from: {Path.GetFileName(ofd.FileName)}");
+                    System.Windows.MessageBox.Show("Settings successfully restored and applied!", "MicAnchor Restore", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    System.Windows.MessageBox.Show("Could not parse settings JSON file. Please check file format.", "Restore Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Failed to restore settings:\n{ex.Message}", "Restore Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExecuteOpenSettingsFolder()
+    {
+        try
+        {
+            string dir = Path.GetDirectoryName(_settingsManager.SettingsFilePath)!;
+            if (Directory.Exists(dir))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = dir,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch { }
     }
 
     private void OnAudioEngineVolumeChanged(object? sender, int volume)

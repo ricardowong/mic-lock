@@ -363,4 +363,42 @@ public class KeyRemapManagerTests
         bool actual = KeyRemapManager.IsExtendedKey((ushort)vk);
         Assert.Equal(expected, actual);
     }
+
+    [Fact]
+    public void CaptureLifecycle_StartsAndCancelsCorrectly()
+    {
+        using var manager = new KeyRemapManager();
+        Assert.False(manager.IsCapturing);
+
+        bool startedCalled = false;
+        bool cancelledCalled = false;
+        manager.CaptureStarted += () => startedCalled = true;
+
+        manager.StartCaptureInput(_ => { }, () => cancelledCalled = true);
+        Assert.True(manager.IsCapturing);
+        Assert.True(startedCalled);
+
+        manager.CancelCapture();
+        Assert.False(manager.IsCapturing);
+        Assert.True(cancelledCalled);
+    }
+
+    [Fact]
+    public void CaptureTargetLifecycle_StartsAndCancelsCorrectly()
+    {
+        using var manager = new KeyRemapManager();
+        Assert.False(manager.IsCapturing);
+
+        bool startedCalled = false;
+        bool cancelledCalled = false;
+        manager.CaptureStarted += () => startedCalled = true;
+
+        manager.StartCaptureTarget((_vk, _c, _a, _s, _w, _disp) => { }, () => cancelledCalled = true);
+        Assert.True(manager.IsCapturing);
+        Assert.True(startedCalled);
+
+        manager.CancelCapture();
+        Assert.False(manager.IsCapturing);
+        Assert.True(cancelledCalled);
+    }
 }

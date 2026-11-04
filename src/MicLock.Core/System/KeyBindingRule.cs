@@ -54,13 +54,13 @@ public class KeyBindingRule
             {
                 Action = KeyRemapAction.ToggleMute,
                 MappingType = KeyMappingType.Shortcut,
-                VirtualKey = 0x43, // 'C' (Keychron Mic Key Win+C)
-                ModifiersCtrl = false,
-                ModifiersAlt = false,
-                ModifiersShift = false,
-                ModifiersWin = true,
+                VirtualKey = 0x4D, // 'M' (Ctrl+Shift+Alt+M standard mute shortcut)
+                ModifiersCtrl = true,
+                ModifiersAlt = true,
+                ModifiersShift = true,
+                ModifiersWin = false,
                 SuppressOriginalKey = true,
-                DisplayText = "Win+C"
+                DisplayText = "Ctrl+Shift+Alt+M"
             },
             new KeyBindingRule
             {

@@ -269,4 +269,33 @@ public class KeyRemapManagerTests
         uint actual = KeyRemapManager.NormalizeModifier(inputVk);
         Assert.Equal(expectedNormalized, actual);
     }
+
+    [Fact]
+    public void AppSettings_ClampValues_MigratesLegacyWinCToCtrlShiftAltM()
+    {
+        var settings = new MicLock.Core.Config.AppSettings
+        {
+            KeyBindings = new List<KeyBindingRule>
+            {
+                new KeyBindingRule
+                {
+                    Action = KeyRemapAction.ToggleMute,
+                    MappingType = KeyMappingType.Shortcut,
+                    VirtualKey = 0x43,
+                    ModifiersWin = true,
+                    DisplayText = "Win+C"
+                }
+            }
+        };
+
+        settings.ClampValues();
+
+        var muteRule = settings.KeyBindings.First(b => b.Action == KeyRemapAction.ToggleMute);
+        Assert.Equal(0x4Du, muteRule.VirtualKey);
+        Assert.True(muteRule.ModifiersCtrl);
+        Assert.True(muteRule.ModifiersAlt);
+        Assert.True(muteRule.ModifiersShift);
+        Assert.False(muteRule.ModifiersWin);
+        Assert.Equal("Ctrl+Shift+Alt+M", muteRule.DisplayText);
+    }
 }

@@ -102,10 +102,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         RemapPresets = new List<RemapPresetItem>
         {
             new RemapPresetItem { DisplayName = "Select a Preset...", VirtualKey = 0 },
-            new RemapPresetItem { DisplayName = "Keychron Mic Key (Win+C)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x43, ModifiersWin = true, ComboText = "Win+C" },
+            new RemapPresetItem { DisplayName = "Standard Mute Shortcut (Ctrl+Shift+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+M" },
             new RemapPresetItem { DisplayName = "PowerToys Remap (Ctrl+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ComboText = "Ctrl+Alt+M" },
             new RemapPresetItem { DisplayName = "Dedicated Hardware Mic Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x83, ComboText = "Dedicated Mic Key" },
-            new RemapPresetItem { DisplayName = "Standard Mute Shortcut (Ctrl+Shift+Alt+M)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x4D, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+M" },
+            new RemapPresetItem { DisplayName = "Keychron Factory Key (Win+C)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x43, ModifiersWin = true, ComboText = "Win+C" },
             new RemapPresetItem { DisplayName = "Cycle Microphone Shortcut (Ctrl+Shift+Alt+D)", MappingType = KeyMappingType.Shortcut, VirtualKey = 0x44, ModifiersCtrl = true, ModifiersAlt = true, ModifiersShift = true, ComboText = "Ctrl+Shift+Alt+D" },
             new RemapPresetItem { DisplayName = "Keyboard Mute Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0xAD, ComboText = "Mute Key" },
             new RemapPresetItem { DisplayName = "Pause / Break Key", MappingType = KeyMappingType.SingleKey, VirtualKey = 0x13, ComboText = "Pause" },

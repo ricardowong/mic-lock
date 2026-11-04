@@ -56,6 +56,18 @@ public class AppSettings
                 }
             }
 
+            // Migrate legacy Win+C mute binding to standard Ctrl+Shift+Alt+M
+            var muteBinding = KeyBindings.FirstOrDefault(b => b.Action == KeyRemapAction.ToggleMute);
+            if (muteBinding != null && muteBinding.ModifiersWin && muteBinding.VirtualKey == 0x43)
+            {
+                muteBinding.VirtualKey = 0x4D;
+                muteBinding.ModifiersCtrl = true;
+                muteBinding.ModifiersAlt = true;
+                muteBinding.ModifiersShift = true;
+                muteBinding.ModifiersWin = false;
+                muteBinding.DisplayText = "Ctrl+Shift+Alt+M";
+            }
+
             // Ensure all known actions exist in the bindings list
             var existingActions = new HashSet<KeyRemapAction>(KeyBindings.Select(b => b.Action));
             foreach (KeyRemapAction action in Enum.GetValues<KeyRemapAction>())

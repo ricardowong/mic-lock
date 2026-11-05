@@ -420,4 +420,31 @@ public class KeyRemapManagerTests
         Assert.False(manager.IsCapturing);
         Assert.True(cancelledCalled);
     }
+
+    [Fact]
+    public void PowerToysConstants_MatchOfficialValues()
+    {
+        Assert.Equal(0xFFu, KeyRemapManager.DUMMY_KEY);
+        Assert.Equal(0x101u, KeyRemapManager.KEYBOARDMANAGER_SHORTCUT_FLAG);
+        Assert.Equal(0x101u, KeyRemapManager.INJECTED_KEY_FLAG);
+    }
+
+    [Fact]
+    public void KeyBindingRule_DefaultRules_IncludeKeychronWinC()
+    {
+        var defaults = KeyBindingRule.CreateDefaultRules();
+        var winCRule = defaults.FirstOrDefault(r => r.Action == KeyRemapAction.ToggleMute);
+
+        Assert.NotNull(winCRule);
+        Assert.Equal(0x43u, winCRule.VirtualKey); // 'C'
+        Assert.True(winCRule.ModifiersWin);
+        Assert.False(winCRule.ModifiersCtrl);
+        Assert.False(winCRule.ModifiersAlt);
+        Assert.False(winCRule.ModifiersShift);
+        Assert.Equal(0x4Du, winCRule.RemapVirtualKey); // 'M'
+        Assert.True(winCRule.RemapModifiersCtrl);
+        Assert.True(winCRule.RemapModifiersAlt);
+        Assert.True(winCRule.RemapModifiersShift);
+        Assert.False(winCRule.RemapModifiersWin);
+    }
 }

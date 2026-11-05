@@ -450,7 +450,9 @@ public class KeyCaptureTests
             heldPhysicalKeys.Remove(0x5B);
             int countBeforeWinUp = sentBatches.Count;
             IntPtr rWinUp = manager.ProcessKeyboardEvent(WM_KEYUP, 0x5B);
-            Assert.Equal((IntPtr)1, rWinUp); // Swallowed in Case 1
+            // CRITICAL INVARIANT: Physical Win key-up must be FORWARDED to OS (IntPtr.Zero), NOT swallowed!
+            // Swallowing it corrupts the Windows RIT hardware keystate and causes the stuck Win key bug.
+            Assert.Equal(IntPtr.Zero, rWinUp);
 
             // Verify release batch in Case 1:
             Assert.True(sentBatches.Count > countBeforeWinUp);

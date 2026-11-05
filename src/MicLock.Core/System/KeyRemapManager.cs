@@ -651,7 +651,13 @@ public class KeyRemapManager : IDisposable
                                 (_invokedRule.ModifiersWin && (vkCode == 0x5B || vkCode == 0x5C)) ||
                                 (_invokedRule.ModifiersCtrl && (vkCode == 0x11 || vkCode == 0xA2 || vkCode == 0xA3)) ||
                                 (_invokedRule.ModifiersAlt && (vkCode == 0x12 || vkCode == 0xA4 || vkCode == 0xA5)) ||
-                                (_invokedRule.ModifiersShift && (vkCode == 0x10 || vkCode == 0xA0 || vkCode == 0xA1));
+                                (_invokedRule.ModifiersShift && (vkCode == 0x10 || vkCode == 0xA0 || vkCode == 0xA1)) ||
+                                (_invokedRule.HasRemap && (
+                                    (_invokedRule.RemapModifiersWin && (vkCode == 0x5B || vkCode == 0x5C)) ||
+                                    (_invokedRule.RemapModifiersCtrl && (vkCode == 0x11 || vkCode == 0xA2 || vkCode == 0xA3)) ||
+                                    (_invokedRule.RemapModifiersAlt && (vkCode == 0x12 || vkCode == 0xA4 || vkCode == 0xA5)) ||
+                                    (_invokedRule.RemapModifiersShift && (vkCode == 0x10 || vkCode == 0xA0 || vkCode == 0xA1))
+                                ));
 
                             if (matchesInvokedModifier)
                             {
@@ -696,8 +702,13 @@ public class KeyRemapManager : IDisposable
                                     _heldTriggerKey = 0;
                                 }
 
-                                // SWALLOW the physical modifier key-up (PowerToys line 1073)!
-                                return (IntPtr)1;
+                                // CRITICAL INVARIANT: FORWARD the physical modifier key-up to Windows!
+                                // Swallowing the physical modifier key-up (VK_LWIN/VK_RWIN) prevents Windows Raw Input
+                                // Thread (RIT) from clearing the hardware asynchronous key state table, leaving the Win key
+                                // stuck down in the OS (which causes subsequent keys like 'D' to trigger Win+D).
+                                // Forwarding it allows Windows to clear the physical key state cleanly, while the Dummy Key (0xFF)
+                                // already emitted in step 1 ensures Explorer's Start Menu does NOT open.
+                                return IntPtr.Zero;
                             }
                         }
 
@@ -708,11 +719,11 @@ public class KeyRemapManager : IDisposable
                         }
 
                         // Case 3: Action key released (PowerToys lines 1113-1201)
-                        if (isUp && vkCode == _invokedRule.VirtualKey)
+                        if (isUp && (vkCode == _invokedRule.VirtualKey || (_invokedRule.HasRemap && vkCode == _invokedRule.RemapVirtualKey)))
                         {
                             _heldTriggerKey = 0;
 
-                            if (_invokedRule.SendRemapKeys && _invokedRule.HasRemap)
+                            if (_invokedRule.SendRemapKeys && _invokedRule.HasRemap && vkCode == _invokedRule.VirtualKey)
                             {
                                 var targetUp = new INPUT[1];
                                 targetUp[0] = CreateKeyInput((ushort)_invokedRule.RemapVirtualKey, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG);
@@ -726,7 +737,7 @@ public class KeyRemapManager : IDisposable
                             }
 
                             // For single-key rules (no modifiers), the gesture ends here
-                            if (!_invokedRule.HasModifiers)
+                            if (!_invokedRule.HasModifiers && (!_invokedRule.HasRemap || vkCode == _invokedRule.VirtualKey))
                             {
                                 lock (_lock)
                                 {
@@ -819,6 +830,7 @@ public class KeyRemapManager : IDisposable
                     {
                         GetPhysicalModifiers(out bool ctrl, out bool alt, out bool shift, out bool win);
                         KeyBindingRule? matchedRule = null;
+                        bool matchedViaRemapTarget = false;
 
                         lock (_lock)
                         {
@@ -826,6 +838,7 @@ public class KeyRemapManager : IDisposable
                             {
                                 if (rule.IsEmpty) continue;
 
+                                // 1. Match Primary Input Key/Shortcut
                                 if (rule.MappingType == KeyMappingType.Shortcut)
                                 {
                                     if (rule.VirtualKey == vkCode &&
@@ -835,6 +848,7 @@ public class KeyRemapManager : IDisposable
                                         rule.ModifiersWin == win)
                                     {
                                         matchedRule = rule;
+                                        matchedViaRemapTarget = false;
                                         break;
                                     }
                                 }
@@ -843,64 +857,103 @@ public class KeyRemapManager : IDisposable
                                     if (rule.VirtualKey == vkCode)
                                     {
                                         matchedRule = rule;
+                                        matchedViaRemapTarget = false;
                                         break;
                                     }
+                                }
+
+                                // 2. Dual-Trigger Match: If user presses the "Remapped As" combination directly on the keyboard,
+                                // execute the action directly without recursively reinjecting!
+                                if (rule.HasRemap && rule.RemapVirtualKey == vkCode &&
+                                    rule.RemapModifiersCtrl == ctrl &&
+                                    rule.RemapModifiersAlt == alt &&
+                                    rule.RemapModifiersShift == shift &&
+                                    rule.RemapModifiersWin == win)
+                                {
+                                    matchedRule = rule;
+                                    matchedViaRemapTarget = true;
+                                    break;
                                 }
                             }
                         }
 
                         if (matchedRule != null)
                         {
-                            uint activeWinVk = IsPhysicalKeyDown(0x5C) ? 0x5Cu : (IsPhysicalKeyDown(0x5B) ? 0x5Bu : (win ? 0x5Bu : 0u));
-
-                            lock (_lock)
+                            if (matchedViaRemapTarget)
                             {
-                                _isShortcutInvoked = true;
-                                _invokedRule = matchedRule;
-                                _invokedWinKey = activeWinVk;
-                                _heldTriggerKey = vkCode;
+                                // User physically pressed the "Remapped As" key combination!
+                                lock (_lock)
+                                {
+                                    _isShortcutInvoked = true;
+                                    _invokedRule = matchedRule;
+                                    _heldTriggerKey = vkCode;
+                                }
+
+                                // Fire internal action immediately
+                                if (matchedRule.Action != KeyRemapAction.None)
+                                {
+                                    var act = matchedRule.Action;
+                                    ThreadPool.QueueUserWorkItem(_ => ActionTriggered?.Invoke(act, KeyPressState.Down));
+                                }
+
+                                LogMessage?.Invoke($"[Remap] Triggered via Remap Target '{matchedRule.RemapDisplayText}' ➔ Action: {matchedRule.Action}");
+                                RemapExecuted?.Invoke(matchedRule.RemapDisplayText, matchedRule.RemapDisplayText, matchedRule.Action.ToString());
+
+                                return (IntPtr)1; // Swallow physical trigger keydown
                             }
-
-                            var batch = new List<INPUT>();
-
-                            // 1. PowerToys Step: Send Dummy Key (0xFF down + up) BEFORE releasing source modifiers!
-                            AppendDummyKey(batch, KEYBOARDMANAGER_SHORTCUT_FLAG);
-
-                            // 2. PowerToys Step: Release source modifiers in reverse order (Shift, Alt, Ctrl, Win)
-                            if (shift) batch.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                            if (alt) batch.Add(CreateKeyInput(0x12, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                            if (ctrl) batch.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                            if (win)
+                            else
                             {
-                                ushort w = (ushort)(activeWinVk != 0 ? activeWinVk : 0x5B);
-                                batch.Add(CreateKeyInput(w, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                uint activeWinVk = IsPhysicalKeyDown(0x5C) ? 0x5Cu : (IsPhysicalKeyDown(0x5B) ? 0x5Bu : (win ? 0x5Bu : 0u));
+
+                                lock (_lock)
+                                {
+                                    _isShortcutInvoked = true;
+                                    _invokedRule = matchedRule;
+                                    _invokedWinKey = activeWinVk;
+                                    _heldTriggerKey = vkCode;
+                                }
+
+                                var batch = new List<INPUT>();
+
+                                // 1. PowerToys Step: Send Dummy Key (0xFF down + up) BEFORE releasing source modifiers!
+                                AppendDummyKey(batch, KEYBOARDMANAGER_SHORTCUT_FLAG);
+
+                                // 2. PowerToys Step: Release source modifiers in reverse order (Shift, Alt, Ctrl, Win)
+                                if (shift) batch.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                if (alt) batch.Add(CreateKeyInput(0x12, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                if (ctrl) batch.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                if (win)
+                                {
+                                    ushort w = (ushort)(activeWinVk != 0 ? activeWinVk : 0x5B);
+                                    batch.Add(CreateKeyInput(w, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                }
+
+                                // 3. PowerToys Step: Inject target modifiers down in forward order (Win, Ctrl, Alt, Shift)
+                                if (matchedRule.SendRemapKeys && matchedRule.HasRemap)
+                                {
+                                    if (matchedRule.RemapModifiersWin) batch.Add(CreateKeyInput(0x5B, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                    if (matchedRule.RemapModifiersCtrl) batch.Add(CreateKeyInput(0x11, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                    if (matchedRule.RemapModifiersAlt) batch.Add(CreateKeyInput(0x12, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                    if (matchedRule.RemapModifiersShift) batch.Add(CreateKeyInput(0x10, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+
+                                    // 4. Inject target action key down
+                                    batch.Add(CreateKeyInput((ushort)matchedRule.RemapVirtualKey, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                }
+
+                                SafeSendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
+
+                                // Fire internal action if configured
+                                if (matchedRule.Action != KeyRemapAction.None)
+                                {
+                                    var act = matchedRule.Action;
+                                    ThreadPool.QueueUserWorkItem(_ => ActionTriggered?.Invoke(act, KeyPressState.Down));
+                                }
+
+                                LogMessage?.Invoke($"[Remap] Triggered '{matchedRule.DisplayText}' ➔ Remapped '{matchedRule.RemapDisplayText}' ➔ Action: {matchedRule.Action}");
+                                RemapExecuted?.Invoke(matchedRule.DisplayText, matchedRule.RemapDisplayText, matchedRule.Action.ToString());
+
+                                return (IntPtr)1; // Swallow physical trigger keydown
                             }
-
-                            // 3. PowerToys Step: Inject target modifiers down in forward order (Win, Ctrl, Alt, Shift)
-                            if (matchedRule.SendRemapKeys && matchedRule.HasRemap)
-                            {
-                                if (matchedRule.RemapModifiersWin) batch.Add(CreateKeyInput(0x5B, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                                if (matchedRule.RemapModifiersCtrl) batch.Add(CreateKeyInput(0x11, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                                if (matchedRule.RemapModifiersAlt) batch.Add(CreateKeyInput(0x12, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                                if (matchedRule.RemapModifiersShift) batch.Add(CreateKeyInput(0x10, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-
-                                // 4. Inject target action key down
-                                batch.Add(CreateKeyInput((ushort)matchedRule.RemapVirtualKey, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                            }
-
-                            SafeSendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
-
-                            // Fire internal action if configured
-                            if (matchedRule.Action != KeyRemapAction.None)
-                            {
-                                var act = matchedRule.Action;
-                                ThreadPool.QueueUserWorkItem(_ => ActionTriggered?.Invoke(act, KeyPressState.Down));
-                            }
-
-                            LogMessage?.Invoke($"[Remap] Triggered '{matchedRule.DisplayText}' ➔ Remapped '{matchedRule.RemapDisplayText}' ➔ Action: {matchedRule.Action}");
-                            RemapExecuted?.Invoke(matchedRule.DisplayText, matchedRule.RemapDisplayText, matchedRule.Action.ToString());
-
-                            return (IntPtr)1; // Swallow physical trigger keydown
                         }
                     }
                 }

@@ -447,4 +447,106 @@ public class KeyRemapManagerTests
         Assert.True(winCRule.RemapModifiersShift);
         Assert.False(winCRule.RemapModifiersWin);
     }
+
+    [Fact]
+    public void ProcessKeyboardEvent_ModifierRelease_ForwardsPhysicalWinKeyUp_ReturnsZero()
+    {
+        // Setup: Mock physical key states
+        var physicalKeys = new Dictionary<uint, bool>
+        {
+            [0x5B] = true // LWin held down
+        };
+        KeyRemapManager.PhysicalKeyStateOverride = vk => physicalKeys.TryGetValue(vk, out bool v) && v;
+
+        try
+        {
+            using var manager = new KeyRemapManager(installHook: false);
+            manager.Bindings.Clear();
+            manager.Bindings.Add(new KeyBindingRule
+            {
+                Action = KeyRemapAction.ToggleMute,
+                MappingType = KeyMappingType.Shortcut,
+                VirtualKey = 0x43, // 'C'
+                ModifiersWin = true,
+                DisplayText = "Win+C"
+            });
+
+            // 1. Win+C triggered: Win down was passed to OS, then C down arrives
+            IntPtr cDownResult = manager.ProcessKeyboardEvent(KeyRemapManager.WM_KEYDOWN, 0x43);
+            Assert.Equal((IntPtr)1, cDownResult); // Swallowed
+
+            // 2. C key up arrives
+            IntPtr cUpResult = manager.ProcessKeyboardEvent(KeyRemapManager.WM_KEYUP, 0x43);
+            Assert.Equal((IntPtr)1, cUpResult); // Swallowed
+
+            // 3. Physical Win key up arrives from Keychron keyboard
+            physicalKeys[0x5B] = false; // Key physically lifted
+            IntPtr winUpResult = manager.ProcessKeyboardEvent(KeyRemapManager.WM_KEYUP, 0x5B);
+
+            // CRITICAL ASSERTION: Must return IntPtr.Zero so the hardware key-up is forwarded to Windows RIT!
+            // If it returns 1 (swallowed), Windows leaves the physical Win key state as stuck down!
+            Assert.Equal(IntPtr.Zero, winUpResult);
+        }
+        finally
+        {
+            KeyRemapManager.PhysicalKeyStateOverride = null;
+        }
+    }
+
+    [Fact]
+    public void ProcessKeyboardEvent_DualTrigger_RemapTargetDirectlyTriggersAction()
+    {
+        // Setup: Mock physical keys for Ctrl+Shift+Alt
+        var physicalKeys = new Dictionary<uint, bool>
+        {
+            [0x11] = true, // Ctrl
+            [0x10] = true, // Shift
+            [0x12] = true, // Alt
+            [0x5B] = false // No Win
+        };
+        KeyRemapManager.PhysicalKeyStateOverride = vk => physicalKeys.TryGetValue(vk, out bool v) && v;
+
+        try
+        {
+            using var manager = new KeyRemapManager(installHook: false);
+            manager.Bindings.Clear();
+            manager.Bindings.Add(new KeyBindingRule
+            {
+                Action = KeyRemapAction.ToggleMute,
+                MappingType = KeyMappingType.Shortcut,
+                VirtualKey = 0x43, // Primary: Win+C
+                ModifiersWin = true,
+                DisplayText = "Win+C",
+                RemapVirtualKey = 0x4D, // Remapped As: Ctrl+Shift+Alt+M
+                RemapModifiersCtrl = true,
+                RemapModifiersShift = true,
+                RemapModifiersAlt = true,
+                RemapModifiersWin = false,
+                RemapDisplayText = "Ctrl+Shift+Alt+M",
+                SendRemapKeys = true
+            });
+
+            KeyRemapAction? triggeredAction = null;
+            using var sem = new System.Threading.ManualResetEventSlim(false);
+            manager.ActionTriggered += (action, state) =>
+            {
+                if (state == KeyPressState.Down)
+                {
+                    triggeredAction = action;
+                    sem.Set();
+                }
+            };
+
+            // User physically presses 'M' while Ctrl+Shift+Alt are held down
+            IntPtr result = manager.ProcessKeyboardEvent(KeyRemapManager.WM_KEYDOWN, 0x4D);
+
+            Assert.Equal((IntPtr)1, result); // Swallowed so 'M' is not typed into active document
+            Assert.True(sem.Wait(1000));
+            Assert.Equal(KeyRemapAction.ToggleMute, triggeredAction); // Toggle Mute fired!
+        }
+        finally
+        {
+            KeyRemapManager.PhysicalKeyStateOverride = null;
+        }
+    }
 }

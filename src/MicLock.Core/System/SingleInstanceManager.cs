@@ -4,7 +4,7 @@ namespace MicLock.Core.Sys;
 
 public class SingleInstanceManager : IDisposable
 {
-    private const string MutexName = @"Global\MicLock_SingleInstance_Mutex_869533af";
+    private const string MutexName = @"Local\MicLock_SingleInstance_Mutex_869533af";
     private Mutex? _mutex;
     private bool _hasHandle;
 

@@ -619,6 +619,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     _currentInputKeyText = current.DisplayText;
                     _liveCapturePreview = string.Empty;
                     IsCapturingInput = false;
+                    OnPropertyChanged(nameof(CurrentInputKeyText));
+                    OnPropertyChanged(nameof(CurrentRemapBindingText));
+                    OnPropertyChanged(nameof(LiveCaptureDisplayText));
 
                     UpdateRemapSummary();
                     AddActivityLog($"[Remap Config] Set input key for '{SelectedRemapAction.DisplayName}' to '{current.DisplayText}'");
@@ -630,6 +633,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _liveCapturePreview = string.Empty;
                     IsCapturingInput = false;
+                    OnPropertyChanged(nameof(CurrentInputKeyText));
+                    OnPropertyChanged(nameof(LiveCaptureDisplayText));
                 });
             });
     }
@@ -684,6 +689,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     IsSendRemapKeysEnabled = true;
                     _liveCapturePreview = string.Empty;
                     IsCapturingTarget = false;
+                    OnPropertyChanged(nameof(CurrentRemapTargetText));
+                    OnPropertyChanged(nameof(LiveCaptureDisplayText));
 
                     UpdateRemapSummary();
                     AddActivityLog($"[Remap Config] Set target remapped shortcut for '{SelectedRemapAction.DisplayName}' to '{current.RemapDisplayText}'");
@@ -695,6 +702,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _liveCapturePreview = string.Empty;
                     IsCapturingTarget = false;
+                    OnPropertyChanged(nameof(CurrentRemapTargetText));
+                    OnPropertyChanged(nameof(LiveCaptureDisplayText));
                 });
             });
     }

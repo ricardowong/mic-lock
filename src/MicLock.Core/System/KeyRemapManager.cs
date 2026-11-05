@@ -298,69 +298,13 @@ public class KeyRemapManager : IDisposable
         {
             var inputs = new INPUT[4];
             // 1. VK_MENU_MASK 0xE8 down (unassigned Win32 virtual key that clears g_fWinKeyPressed in explorer.exe)
-            inputs[0] = new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                u = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = (ushort)VK_MENU_MASK,
-                        wScan = 0,
-                        dwFlags = 0,
-                        time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
-                    }
-                }
-            };
+            inputs[0] = CreateKeyInput((ushort)VK_MENU_MASK, 0, INJECTED_KEY_FLAG);
             // 2. VK_MENU_MASK 0xE8 up
-            inputs[1] = new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                u = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = (ushort)VK_MENU_MASK,
-                        wScan = 0,
-                        dwFlags = KEYEVENTF_KEYUP,
-                        time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
-                    }
-                }
-            };
-            // 3. VK_DUMMY 0xFF down
-            inputs[2] = new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                u = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = (ushort)VK_DUMMY,
-                        wScan = 0,
-                        dwFlags = 0,
-                        time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
-                    }
-                }
-            };
-            // 4. VK_DUMMY 0xFF up
-            inputs[3] = new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                u = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = (ushort)VK_DUMMY,
-                        wScan = 0,
-                        dwFlags = KEYEVENTF_KEYUP,
-                        time = 0,
-                        dwExtraInfo = (UIntPtr)DUMMY_KEY_FLAG
-                    }
-                }
-            };
+            inputs[1] = CreateKeyInput((ushort)VK_MENU_MASK, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG);
+            // 3. VK_CONTROL 0x11 down (standard Windows shell menu mask)
+            inputs[2] = CreateKeyInput(0x11, 0, INJECTED_KEY_FLAG);
+            // 4. VK_CONTROL 0x11 up
+            inputs[3] = CreateKeyInput(0x11, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG);
 
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         }
@@ -672,11 +616,11 @@ public class KeyRemapManager : IDisposable
                                     if (_invokedRule.RemapModifiersCtrl) releaseList.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
                                 }
 
-                                // Disarm Start Menu with Win32 Menu Mask (0xE8) and Dummy Key (0xFF)
+                                // Disarm Start Menu in Explorer with Win32 Menu Mask (0xE8) and Left Control (0x11)
                                 releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, 0, INJECTED_KEY_FLAG));
                                 releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
-                                releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, 0, INJECTED_KEY_FLAG));
-                                releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                releaseList.Add(CreateKeyInput(0x11, 0, INJECTED_KEY_FLAG));
+                                releaseList.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
 
                                 if (releaseList.Count > 0)
                                 {
@@ -693,8 +637,9 @@ public class KeyRemapManager : IDisposable
                                     }
                                 }
 
-                                LogMessage?.Invoke("[Remap] Released target modifiers and suppressed physical Win keyup.");
-                                return (IntPtr)1; // Suppress physical Win keyup so Windows does not receive duplicate keyup
+                                LogMessage?.Invoke("[Remap] Released target modifiers, disarmed Start Menu, and forwarded physical Win keyup.");
+                                // CRITICAL INVARIANT: NEVER swallow physical Win keyup! Forward to Windows kernel so physical state clears.
+                                return CallNextHookEx(_hookId, nCode, wParam, lParam);
                             }
 
                             lock (_lock)
@@ -772,13 +717,18 @@ public class KeyRemapManager : IDisposable
 
                             if (matchedRule.ModifiersWin || win)
                             {
-                                // 1. Dummy Key (0xFF) DOWN + UP to disarm Start Menu
-                                batch.Add(CreateKeyInput((ushort)VK_DUMMY, 0, INJECTED_KEY_FLAG));
-                                batch.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                // Disarm Start Menu in Explorer immediately using Menu Mask (0xE8) and Control (0x11)
+                                batch.Add(CreateKeyInput((ushort)VK_MENU_MASK, 0, INJECTED_KEY_FLAG));
+                                batch.Add(CreateKeyInput((ushort)VK_MENU_MASK, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                batch.Add(CreateKeyInput(0x11, 0, INJECTED_KEY_FLAG));
+                                batch.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
 
-                                // 2. Release source Win key in OS async keystate table immediately
-                                batch.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
-                                batch.Add(CreateKeyInput(0x5C, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                // If remapping to a non-Win target shortcut, release source Win key first
+                                if (matchedRule.SendRemapKeys && matchedRule.HasRemap && !matchedRule.RemapModifiersWin)
+                                {
+                                    batch.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                    batch.Add(CreateKeyInput(0x5C, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                }
                             }
 
                             // 3. Inject remapped keystrokes if configured

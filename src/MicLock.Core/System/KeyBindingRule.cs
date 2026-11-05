@@ -31,7 +31,7 @@ public class KeyBindingRule
     public bool SuppressOriginalKey { get; set; } = true;
     public string DisplayText { get; set; } = "None";
 
-    // Remapped Target Key/Shortcut (PowerToys remapping target, e.g. Ctrl+Shift+Alt+M)
+    // Remapped Target Key/Shortcut (e.g. Ctrl+Shift+Alt+M)
     public uint RemapVirtualKey { get; set; } = 0;
     public bool RemapModifiersCtrl { get; set; } = false;
     public bool RemapModifiersAlt { get; set; } = false;

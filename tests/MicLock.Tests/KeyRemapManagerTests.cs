@@ -49,7 +49,7 @@ public class KeyRemapManagerTests
         string combo7 = KeyRemapManager.FormatKeyCombination(0x43, ctrl: false, alt: false, shift: false, win: true);
         Assert.Equal("Win+C", combo7);
 
-        // Ctrl+Alt+M combination for PowerToys
+        // Ctrl+Alt+M combination
         string combo8 = KeyRemapManager.FormatKeyCombination(0x4D, ctrl: true, alt: true, shift: false, win: false);
         Assert.Equal("Ctrl+Alt+M", combo8);
     }
@@ -164,7 +164,7 @@ public class KeyRemapManagerTests
     }
 
     [Fact]
-    public void KeychronAndPowerToys_PresetCombinations_HaveCorrectMappingTypes()
+    public void PresetCombinations_HaveCorrectMappingTypes()
     {
         // Keychron factory mic key produces Win+C (Shortcut)
         var keychron = new KeyBindingRule
@@ -179,8 +179,8 @@ public class KeyRemapManagerTests
         Assert.True(keychron.ModifiersWin);
         Assert.False(keychron.ModifiersCtrl);
 
-        // PowerToys remap produces Ctrl+Alt+M (Shortcut)
-        var powerToys = new KeyBindingRule
+        // Custom shortcut remap produces Ctrl+Alt+M (Shortcut)
+        var customShortcut = new KeyBindingRule
         {
             Action = KeyRemapAction.ToggleMute,
             MappingType = KeyMappingType.Shortcut,
@@ -189,9 +189,9 @@ public class KeyRemapManagerTests
             ModifiersAlt = true,
             DisplayText = "Ctrl+Alt+M"
         };
-        Assert.Equal(KeyMappingType.Shortcut, powerToys.MappingType);
-        Assert.True(powerToys.ModifiersCtrl);
-        Assert.True(powerToys.ModifiersAlt);
+        Assert.Equal(KeyMappingType.Shortcut, customShortcut.MappingType);
+        Assert.True(customShortcut.ModifiersCtrl);
+        Assert.True(customShortcut.ModifiersAlt);
 
         // Hardware Dedicated Mic Key produces 0x83 (SingleKey)
         var hardwareKey = new KeyBindingRule

@@ -21,10 +21,10 @@ public class KeyRemapManager : IDisposable
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
     private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const uint VK_MENU_MASK = 0xE8; // AutoHotkey / Windows Shell menu mask key (clears g_fWinKeyPressed in explorer.exe)
-    private const uint VK_DUMMY = 0xFF;     // PowerToys dummy key
+    private const uint VK_MENU_MASK = 0xE8; // Win32 shell menu mask key (unassigned OEM key that clears g_fWinKeyPressed in explorer.exe)
+    private const uint VK_DUMMY = 0xFF;     // Win32 dummy key (0xFF / VK_OEM_CLEAR)
     private const uint DUMMY_KEY_FLAG = 0x2000;
-    private const uint POWERTOYS_SHORTCUT_FLAG = 0x101;
+    private const uint INJECTED_KEY_FLAG = 0x101; // Marker flag to prevent hook recursion on synthetic keystrokes
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -91,7 +91,7 @@ public class KeyRemapManager : IDisposable
     private IntPtr _hookId = IntPtr.Zero;
     private bool _disposed;
 
-    // PowerToys Remap Engine State
+    // Shortcut Invocation State
     private bool _isShortcutInvoked;
     private KeyBindingRule? _invokedRule;
 
@@ -297,7 +297,7 @@ public class KeyRemapManager : IDisposable
         try
         {
             var inputs = new INPUT[4];
-            // 1. VK_MENU_MASK 0xE8 down (AutoHotkey verified shell mask key that resets g_fWinKeyPressed in explorer.exe)
+            // 1. VK_MENU_MASK 0xE8 down (unassigned Win32 virtual key that clears g_fWinKeyPressed in explorer.exe)
             inputs[0] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -329,7 +329,7 @@ public class KeyRemapManager : IDisposable
                     }
                 }
             };
-            // 3. VK_DUMMY 0xFF down (PowerToys dummy key)
+            // 3. VK_DUMMY 0xFF down
             inputs[2] = new INPUT
             {
                 type = INPUT_KEYBOARD,
@@ -368,10 +368,9 @@ public class KeyRemapManager : IDisposable
     }
 
     /// <summary>
-    /// Replicates PowerToys SetModifierKeyEvents + SendVirtualInput:
-    /// Injects target remapped shortcut into Windows with KEYBOARDMANAGER_SHORTCUT_FLAG (0x101).
+    /// Injects target remapped shortcut into Windows with INJECTED_KEY_FLAG (0x101).
     /// </summary>
-    public static void InjectShortcut(uint vk, bool ctrl, bool alt, bool shift, bool win, uint extraInfo = POWERTOYS_SHORTCUT_FLAG)
+    public static void InjectShortcut(uint vk, bool ctrl, bool alt, bool shift, bool win, uint extraInfo = INJECTED_KEY_FLAG)
     {
         if (vk == 0) return;
 
@@ -502,9 +501,9 @@ public class KeyRemapManager : IDisposable
             var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             uint vkCode = hookStruct.vkCode;
 
-            // Ignore synthetic dummy, menu-mask, and PowerToys-flagged key events injected for remapping
+            // Ignore synthetic dummy, menu-mask, and injected marker events to prevent re-entrant loops
             if (hookStruct.dwExtraInfo == (UIntPtr)DUMMY_KEY_FLAG ||
-                hookStruct.dwExtraInfo == (UIntPtr)POWERTOYS_SHORTCUT_FLAG ||
+                hookStruct.dwExtraInfo == (UIntPtr)INJECTED_KEY_FLAG ||
                 vkCode == VK_DUMMY ||
                 vkCode == VK_MENU_MASK)
             {
@@ -528,7 +527,7 @@ public class KeyRemapManager : IDisposable
                 }
 
                 // =================================================================================
-                // 1. CAPTURE / DETECTION MODE (PowerToys: DetectShortcutUIBackend / DetectSingleRemapKeyUIBackend)
+                // 1. CAPTURE / DETECTION MODE
                 // =================================================================================
                 if (_isCapturingInput || _isCapturingTarget || _isDrainingCapture)
                 {
@@ -592,7 +591,6 @@ public class KeyRemapManager : IDisposable
                     }
                     else if (isUp)
                     {
-                        // In PowerToys DetectShortcutUIBackend:
                         // Suppress all key-up events during capture so Windows OS never receives unhandled key transitions
                         if (_isDrainingCapture)
                         {
@@ -648,7 +646,7 @@ public class KeyRemapManager : IDisposable
                 }
 
                 // =================================================================================
-                // 2. NORMAL EXECUTION MODE (PowerToys Keyboard Event Handlers)
+                // 2. NORMAL EXECUTION MODE
                 // =================================================================================
                 if (IsRemapEnabled)
                 {
@@ -657,30 +655,28 @@ public class KeyRemapManager : IDisposable
                     {
                         if (isUp)
                         {
-                            // In PowerToys KeyboardEventHandlers.cpp (lines 1002-1074 & 2165-2175):
                             // When a physical modifier is released while a shortcut is invoked:
                             // 1. Release any injected target modifiers so they don't remain stuck down.
                             // 2. Disarm the Start Menu by sending menu mask (0xE8) and dummy key (0xFF).
-                            // 3. CRITICAL: In PowerToys line 1073: SUPPRESS the physical modifier keyup from reaching Windows!
-                            //    Windows already received the modifier keyup when the shortcut was initially invoked.
-                            //    Forwarding it would inject an orphan physical keyup, triggering Explorer's Start Menu.
+                            // 3. Suppress the physical modifier keyup from reaching Windows: Windows already
+                            //    received the modifier keyup when the shortcut was initially invoked.
                             if (_isShortcutInvoked && _invokedRule != null && _invokedRule.ModifiersWin && (vkCode == 0x5B || vkCode == 0x5C))
                             {
                                 var releaseList = new List<INPUT>();
 
                                 if (_invokedRule.SendRemapKeys && _invokedRule.HasRemap)
                                 {
-                                    if (_invokedRule.RemapModifiersWin) releaseList.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
-                                    if (_invokedRule.RemapModifiersAlt) releaseList.Add(CreateKeyInput(0x12, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
-                                    if (_invokedRule.RemapModifiersShift) releaseList.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
-                                    if (_invokedRule.RemapModifiersCtrl) releaseList.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
+                                    if (_invokedRule.RemapModifiersWin) releaseList.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                    if (_invokedRule.RemapModifiersAlt) releaseList.Add(CreateKeyInput(0x12, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                    if (_invokedRule.RemapModifiersShift) releaseList.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                    if (_invokedRule.RemapModifiersCtrl) releaseList.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
                                 }
 
-                                // Disarm Start Menu with AutoHotkey Menu Mask (0xE8) and PowerToys Dummy Key (0xFF)
-                                releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, 0, POWERTOYS_SHORTCUT_FLAG));
-                                releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
-                                releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, 0, POWERTOYS_SHORTCUT_FLAG));
-                                releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
+                                // Disarm Start Menu with Win32 Menu Mask (0xE8) and Dummy Key (0xFF)
+                                releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, 0, INJECTED_KEY_FLAG));
+                                releaseList.Add(CreateKeyInput((ushort)VK_MENU_MASK, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, 0, INJECTED_KEY_FLAG));
+                                releaseList.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
 
                                 if (releaseList.Count > 0)
                                 {
@@ -697,7 +693,7 @@ public class KeyRemapManager : IDisposable
                                     }
                                 }
 
-                                LogMessage?.Invoke("[Remap] PowerToys Case 1: Released target modifiers and suppressed physical Win keyup.");
+                                LogMessage?.Invoke("[Remap] Released target modifiers and suppressed physical Win keyup.");
                                 return (IntPtr)1; // Suppress physical Win keyup so Windows does not receive duplicate keyup
                             }
 
@@ -771,31 +767,31 @@ public class KeyRemapManager : IDisposable
                             _isShortcutInvoked = true;
                             _invokedRule = matchedRule;
 
-                            // PowerToys HandleShortcutRemapEvent Atomic Batch (lines 848-860):
+                            // Atomic shortcut remap batch:
                             var batch = new List<INPUT>();
 
                             if (matchedRule.ModifiersWin || win)
                             {
                                 // 1. Dummy Key (0xFF) DOWN + UP to disarm Start Menu
-                                batch.Add(CreateKeyInput((ushort)VK_DUMMY, 0, POWERTOYS_SHORTCUT_FLAG));
-                                batch.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
+                                batch.Add(CreateKeyInput((ushort)VK_DUMMY, 0, INJECTED_KEY_FLAG));
+                                batch.Add(CreateKeyInput((ushort)VK_DUMMY, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
 
-                                // 2. Release source Win key in OS async keystate table immediately!
-                                batch.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
-                                batch.Add(CreateKeyInput(0x5C, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG));
+                                // 2. Release source Win key in OS async keystate table immediately
+                                batch.Add(CreateKeyInput(0x5B, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
+                                batch.Add(CreateKeyInput(0x5C, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG));
                             }
 
                             // 3. Inject remapped keystrokes if configured
                             if (matchedRule.SendRemapKeys && matchedRule.HasRemap)
                             {
                                 // Target modifiers DOWN
-                                if (matchedRule.RemapModifiersCtrl) batch.Add(CreateKeyInput(0x11, 0, POWERTOYS_SHORTCUT_FLAG));
-                                if (matchedRule.RemapModifiersShift) batch.Add(CreateKeyInput(0x10, 0, POWERTOYS_SHORTCUT_FLAG));
-                                if (matchedRule.RemapModifiersAlt) batch.Add(CreateKeyInput(0x12, 0, POWERTOYS_SHORTCUT_FLAG));
-                                if (matchedRule.RemapModifiersWin) batch.Add(CreateKeyInput(0x5B, 0, POWERTOYS_SHORTCUT_FLAG));
+                                if (matchedRule.RemapModifiersCtrl) batch.Add(CreateKeyInput(0x11, 0, INJECTED_KEY_FLAG));
+                                if (matchedRule.RemapModifiersShift) batch.Add(CreateKeyInput(0x10, 0, INJECTED_KEY_FLAG));
+                                if (matchedRule.RemapModifiersAlt) batch.Add(CreateKeyInput(0x12, 0, INJECTED_KEY_FLAG));
+                                if (matchedRule.RemapModifiersWin) batch.Add(CreateKeyInput(0x5B, 0, INJECTED_KEY_FLAG));
 
                                 // Target action key DOWN
-                                batch.Add(CreateKeyInput((ushort)matchedRule.RemapVirtualKey, 0, POWERTOYS_SHORTCUT_FLAG));
+                                batch.Add(CreateKeyInput((ushort)matchedRule.RemapVirtualKey, 0, INJECTED_KEY_FLAG));
                             }
 
                             if (batch.Count > 0)
@@ -810,7 +806,7 @@ public class KeyRemapManager : IDisposable
                                 ThreadPool.QueueUserWorkItem(_ => ActionTriggered?.Invoke(act, KeyPressState.Down));
                             }
 
-                            LogMessage?.Invoke($"[Remap] PowerToys Step b: Triggered '{matchedRule.DisplayText}' ➔ Remapped '{matchedRule.RemapDisplayText}' ➔ Action: {matchedRule.Action}");
+                            LogMessage?.Invoke($"[Remap] Triggered '{matchedRule.DisplayText}' ➔ Remapped '{matchedRule.RemapDisplayText}' ➔ Action: {matchedRule.Action}");
                             RemapExecuted?.Invoke(matchedRule.DisplayText, matchedRule.RemapDisplayText, matchedRule.Action.ToString());
 
                             if (matchedRule.SuppressOriginalKey)
@@ -840,12 +836,11 @@ public class KeyRemapManager : IDisposable
 
                         if (wasPressed && ruleToRelease != null)
                         {
-                            // In PowerToys Case 3 (lines 1113-1121):
                             // Inject target action key UP (target modifiers remain held until physical modifier releases)
                             if (ruleToRelease.SendRemapKeys && ruleToRelease.HasRemap)
                             {
                                 var targetUp = new INPUT[1];
-                                targetUp[0] = CreateKeyInput((ushort)ruleToRelease.RemapVirtualKey, KEYEVENTF_KEYUP, POWERTOYS_SHORTCUT_FLAG);
+                                targetUp[0] = CreateKeyInput((ushort)ruleToRelease.RemapVirtualKey, KEYEVENTF_KEYUP, INJECTED_KEY_FLAG);
                                 SendInput(1, targetUp, Marshal.SizeOf<INPUT>());
                             }
 

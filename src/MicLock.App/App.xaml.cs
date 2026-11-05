@@ -100,7 +100,7 @@ public partial class App : Application
                 return;
             }
 
-            // 2. Start IPC Server for subsequent instances (PowerToys / CLI)
+            // 2. Start IPC Server for subsequent instances (CLI / External hotkeys)
             Log("Starting IPC Server");
             _ipcServer = new AppIpcServer();
             _ipcServer.CommandReceived += OnIpcCommandReceived;

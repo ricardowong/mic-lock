@@ -69,6 +69,19 @@ public class KeyRemapManager : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, [In] INPUT[] pInputs, int cbSize);
 
+    public static Action<INPUT[]>? OnSendInputSent { get; set; }
+    public static Func<uint, INPUT[], int, uint>? SendInputOverride { get; set; }
+
+    private static uint SafeSendInput(uint nInputs, INPUT[] pInputs, int cbSize)
+    {
+        OnSendInputSent?.Invoke(pInputs);
+        if (SendInputOverride != null)
+        {
+            return SendInputOverride(nInputs, pInputs, cbSize);
+        }
+        return SendInput(nInputs, pInputs, cbSize);
+    }
+
     [DllImport("user32.dll")]
     private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
@@ -341,7 +354,16 @@ public class KeyRemapManager : IDisposable
         return (rMenu & 0x8000) != 0 && (lCtrl & 0x8000) != 0 && (lMenu & 0x8000) == 0 && (rCtrl & 0x8000) == 0;
     }
 
-    public static bool IsPhysicalKeyDown(uint vk) => (GetAsyncKeyState((int)vk) & 0x8000) != 0;
+    public static Func<uint, bool>? PhysicalKeyStateOverride { get; set; }
+
+    public static bool IsPhysicalKeyDown(uint vk)
+    {
+        if (PhysicalKeyStateOverride != null)
+        {
+            return PhysicalKeyStateOverride(vk);
+        }
+        return (GetAsyncKeyState((int)vk) & 0x8000) != 0;
+    }
 
     public static bool AreAnyModifiersPhysicallyHeld()
     {
@@ -361,11 +383,11 @@ public class KeyRemapManager : IDisposable
     }
 
     // PowerToys Helpers::IsExtendedKey (Helpers.cpp line 134) & Win32 Extended Keys
+    // VK_LWIN (0x5B) and VK_RWIN (0x5C) MUST NOT have KEYEVENTF_EXTENDEDKEY (matches PowerToys Helpers.cpp lines 134-170)
     public static bool IsExtendedKey(ushort vk)
     {
         return vk switch
         {
-            0x5B or 0x5C => true,  // VK_LWIN, VK_RWIN (Extended scan code 0xE0)
             0x5D => true,         // VK_APPS
             0xA3 => true,         // VK_RCONTROL
             0xA5 => true,         // VK_RMENU
@@ -423,7 +445,7 @@ public class KeyRemapManager : IDisposable
             AppendDummyKey(list, KEYBOARDMANAGER_SHORTCUT_FLAG);
             if (list.Count > 0)
             {
-                SendInput((uint)list.Count, list.ToArray(), Marshal.SizeOf<INPUT>());
+                SafeSendInput((uint)list.Count, list.ToArray(), Marshal.SizeOf<INPUT>());
             }
         }
         catch { }
@@ -456,7 +478,7 @@ public class KeyRemapManager : IDisposable
             if (shift) list.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, extraInfo));
             if (ctrl) list.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, extraInfo));
 
-            SendInput((uint)list.Count, list.ToArray(), Marshal.SizeOf<INPUT>());
+            SafeSendInput((uint)list.Count, list.ToArray(), Marshal.SizeOf<INPUT>());
         }
         catch { }
     }
@@ -466,7 +488,11 @@ public class KeyRemapManager : IDisposable
         if (nCode >= 0)
         {
             var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            return ProcessKeyboardEvent(nCode, wParam, hookStruct.vkCode, hookStruct.flags, hookStruct.dwExtraInfo);
+            IntPtr result = ProcessKeyboardEvent(nCode, wParam, hookStruct.vkCode, hookStruct.flags, hookStruct.dwExtraInfo);
+            if (result != IntPtr.Zero)
+            {
+                return result; // Swallowed
+            }
         }
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
@@ -485,7 +511,7 @@ public class KeyRemapManager : IDisposable
                 dwExtraInfo == (UIntPtr)KEYBOARDMANAGER_SHORTCUT_FLAG ||
                 vkCode == DUMMY_KEY)
             {
-                return _hookId != IntPtr.Zero ? CallNextHookEx(_hookId, nCode, wParam, IntPtr.Zero) : IntPtr.Zero;
+                return IntPtr.Zero;
             }
 
             int msg = wParam.ToInt32();
@@ -649,9 +675,17 @@ public class KeyRemapManager : IDisposable
                                 // PowerToys: Send Dummy Key (0xFF down + up) to disarm Explorer Start Menu
                                 AppendDummyKey(releaseBatch, KEYBOARDMANAGER_SHORTCUT_FLAG);
 
+                                // Explicitly release the physical modifier to Windows kernel
+                                ushort modToRelease = (ushort)vkCode;
+                                if (modToRelease == 0x5B || modToRelease == 0x5C || modToRelease == 0x11 || modToRelease == 0x12 || modToRelease == 0x10 ||
+                                    modToRelease == 0xA0 || modToRelease == 0xA1 || modToRelease == 0xA2 || modToRelease == 0xA3 || modToRelease == 0xA4 || modToRelease == 0xA5)
+                                {
+                                    releaseBatch.Add(CreateKeyInput(modToRelease, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                }
+
                                 if (releaseBatch.Count > 0)
                                 {
-                                    SendInput((uint)releaseBatch.Count, releaseBatch.ToArray(), Marshal.SizeOf<INPUT>());
+                                    SafeSendInput((uint)releaseBatch.Count, releaseBatch.ToArray(), Marshal.SizeOf<INPUT>());
                                 }
 
                                 lock (_lock)
@@ -659,6 +693,7 @@ public class KeyRemapManager : IDisposable
                                     _isShortcutInvoked = false;
                                     _invokedRule = null;
                                     _invokedWinKey = 0;
+                                    _heldTriggerKey = 0;
                                 }
 
                                 // SWALLOW the physical modifier key-up (PowerToys line 1073)!
@@ -681,7 +716,7 @@ public class KeyRemapManager : IDisposable
                             {
                                 var targetUp = new INPUT[1];
                                 targetUp[0] = CreateKeyInput((ushort)_invokedRule.RemapVirtualKey, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG);
-                                SendInput(1, targetUp, Marshal.SizeOf<INPUT>());
+                                SafeSendInput(1, targetUp, Marshal.SizeOf<INPUT>());
                             }
 
                             if (_invokedRule.Action != KeyRemapAction.None)
@@ -719,20 +754,46 @@ public class KeyRemapManager : IDisposable
                                 if (_invokedRule.RemapModifiersCtrl) revertBatch.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
                             }
 
-                            // 2. Re-assert physical modifiers to OS
+                            // 2. ONLY re-assert physical modifiers to OS if they are ACTUALLY STILL PHYSICALLY HELD!
                             if (_invokedRule.ModifiersWin)
                             {
                                 ushort winVk = (ushort)(_invokedWinKey != 0 ? _invokedWinKey : 0x5B);
-                                revertBatch.Add(CreateKeyInput(winVk, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                if (IsPhysicalKeyDown(winVk) || IsPhysicalKeyDown(0x5B) || IsPhysicalKeyDown(0x5C))
+                                {
+                                    revertBatch.Add(CreateKeyInput(winVk, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                }
+                                else
+                                {
+                                    // Physical Win key was already released! Send explicit key-up to ensure Windows modifier state is clean.
+                                    revertBatch.Add(CreateKeyInput(winVk, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                }
                             }
-                            if (_invokedRule.ModifiersCtrl) revertBatch.Add(CreateKeyInput(0x11, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                            if (_invokedRule.ModifiersAlt) revertBatch.Add(CreateKeyInput(0x12, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
-                            if (_invokedRule.ModifiersShift) revertBatch.Add(CreateKeyInput(0x10, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                            if (_invokedRule.ModifiersCtrl)
+                            {
+                                if (IsPhysicalKeyDown(0x11) || IsPhysicalKeyDown(0xA2) || IsPhysicalKeyDown(0xA3))
+                                    revertBatch.Add(CreateKeyInput(0x11, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                else
+                                    revertBatch.Add(CreateKeyInput(0x11, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                            }
+                            if (_invokedRule.ModifiersAlt)
+                            {
+                                if (IsPhysicalKeyDown(0x12) || IsPhysicalKeyDown(0xA4) || IsPhysicalKeyDown(0xA5))
+                                    revertBatch.Add(CreateKeyInput(0x12, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                else
+                                    revertBatch.Add(CreateKeyInput(0x12, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                            }
+                            if (_invokedRule.ModifiersShift)
+                            {
+                                if (IsPhysicalKeyDown(0x10) || IsPhysicalKeyDown(0xA0) || IsPhysicalKeyDown(0xA1))
+                                    revertBatch.Add(CreateKeyInput(0x10, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                                else
+                                    revertBatch.Add(CreateKeyInput(0x10, KEYEVENTF_KEYUP, KEYBOARDMANAGER_SHORTCUT_FLAG));
+                            }
 
                             // 3. Re-inject the new key (extraInfo = 0 so OS processes it as natural input)
                             revertBatch.Add(CreateKeyInput((ushort)vkCode, 0, 0));
 
-                            SendInput((uint)revertBatch.Count, revertBatch.ToArray(), Marshal.SizeOf<INPUT>());
+                            SafeSendInput((uint)revertBatch.Count, revertBatch.ToArray(), Marshal.SizeOf<INPUT>());
 
                             lock (_lock)
                             {
@@ -790,7 +851,7 @@ public class KeyRemapManager : IDisposable
 
                         if (matchedRule != null)
                         {
-                            uint activeWinVk = IsPhysicalKeyDown(0x5C) ? 0x5Cu : (IsPhysicalKeyDown(0x5B) ? 0x5Bu : 0u);
+                            uint activeWinVk = IsPhysicalKeyDown(0x5C) ? 0x5Cu : (IsPhysicalKeyDown(0x5B) ? 0x5Bu : (win ? 0x5Bu : 0u));
 
                             lock (_lock)
                             {
@@ -827,7 +888,7 @@ public class KeyRemapManager : IDisposable
                                 batch.Add(CreateKeyInput((ushort)matchedRule.RemapVirtualKey, 0, KEYBOARDMANAGER_SHORTCUT_FLAG));
                             }
 
-                            SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
+                            SafeSendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
 
                             // Fire internal action if configured
                             if (matchedRule.Action != KeyRemapAction.None)
@@ -847,7 +908,7 @@ public class KeyRemapManager : IDisposable
         }
 
         // Default: Forward unmodified to Windows kernel
-        return _hookId != IntPtr.Zero ? CallNextHookEx(_hookId, nCode, wParam, IntPtr.Zero) : IntPtr.Zero;
+        return IntPtr.Zero;
     }
 
     public static string FormatKeyName(uint vkCode)

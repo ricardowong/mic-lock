@@ -94,6 +94,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CancelCaptureCommand { get; }
     public ICommand ClearInputCommand { get; }
     public ICommand ClearTargetCommand { get; }
+    public ICommand CycleRemapActionCommand { get; }
 
     // Backwards compatibility commands
     public ICommand StartRecordKeyCommand => StartCaptureInputCommand;
@@ -139,6 +140,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         CancelCaptureCommand = new RelayCommand(_ => CancelCapture());
         ClearInputCommand = new RelayCommand(_ => ClearInput());
         ClearTargetCommand = new RelayCommand(_ => ClearTarget());
+        CycleRemapActionCommand = new RelayCommand(_ => CycleRemapAction());
 
         CheckForUpdatesCommand = new RelayCommand(async _ => await CheckForUpdatesAsync());
 
@@ -379,9 +381,38 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SetProperty(ref _selectedRemapAction, value))
             {
+                OnPropertyChanged(nameof(SelectedActionShortName));
                 UpdateRemapDisplayForCurrentAction();
             }
         }
+    }
+
+    public string SelectedActionShortName => SelectedRemapAction?.Action switch
+    {
+        KeyRemapAction.ToggleMute => "Toggle Mute",
+        KeyRemapAction.PushToTalk => "Push to Talk",
+        KeyRemapAction.PushToMute => "Push to Mute",
+        KeyRemapAction.CycleRecordingDevice => "Cycle Mic",
+        KeyRemapAction.LockVolume => "Lock Volume",
+        KeyRemapAction.None => "Passthrough",
+        _ => "Toggle Mute"
+    };
+
+    public void CycleRemapAction()
+    {
+        if (RemapActions == null || RemapActions.Count == 0) return;
+        int index = -1;
+        for (int i = 0; i < RemapActions.Count; i++)
+        {
+            if (RemapActions[i].Action == SelectedRemapAction.Action)
+            {
+                index = i;
+                break;
+            }
+        }
+        int next = (index + 1) % RemapActions.Count;
+        SelectedRemapAction = RemapActions[next];
+        AddActivityLog($"[Remap Config] Switched active action to '{SelectedRemapAction.DisplayName}'");
     }
 
     private string _liveCapturePreview = string.Empty;

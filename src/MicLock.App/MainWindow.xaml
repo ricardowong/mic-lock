@@ -527,9 +527,13 @@
                                     <!-- Node 3: Executed Action -->
                                     <StackPanel Grid.Column="4">
                                         <TextBlock Text="ACTION" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,3"/>
-                                        <Border Background="#FFFFFF" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="5" Height="26" Padding="6,0">
-                                            <TextBlock Text="Toggle Mute" FontSize="9.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                        </Border>
+                                        <Button Command="{Binding CycleRemapActionCommand}"
+                                                Style="{StaticResource ActionButtonStyle}"
+                                                Height="26"
+                                                Padding="6,0"
+                                                ToolTip="Click to cycle active action (Toggle Mute, Push-to-Talk, etc.)">
+                                            <TextBlock Text="{Binding SelectedActionShortName}" FontSize="9.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </Border>

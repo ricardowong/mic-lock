@@ -346,8 +346,8 @@ public class KeyRemapManagerTests
     }
 
     [Theory]
-    [InlineData(0x5Bu, true)]  // LWin
-    [InlineData(0x5Cu, true)]  // RWin
+    [InlineData(0x5Bu, false)] // LWin (PowerToys invariant: not extended key)
+    [InlineData(0x5Cu, false)] // RWin (PowerToys invariant: not extended key)
     [InlineData(0x5Du, true)]  // Apps
     [InlineData(0xA3u, true)]  // RControl
     [InlineData(0xA5u, true)]  // RMenu (AltGr)

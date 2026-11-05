@@ -357,6 +357,127 @@ public class KeyCaptureTests
         }
     }
 
+    [Fact]
+    public void ViewModel_CycleRemapActionCommand_CyclesThroughActions()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"miclock_vm_test_{Guid.NewGuid():N}.json");
+        try
+        {
+            var settings = new SettingsManager(tempFile);
+            var startup = new StartupManager();
+            using var dummyAudio = new DummyAudioEngine();
+            using var remapManager = new KeyRemapManager(installHook: false);
+            using var vm = new MainViewModel(dummyAudio, settings, startup, remapManager);
+
+            Assert.Equal("Toggle Mute", vm.SelectedActionShortName);
+            vm.CycleRemapActionCommand.Execute(null);
+            Assert.Equal("Cycle Mic", vm.SelectedActionShortName);
+            vm.CycleRemapActionCommand.Execute(null);
+            Assert.Equal("Lock Volume", vm.SelectedActionShortName);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void IsExtendedKey_WinKey_IsNotExtendedKey_MatchingPowerToys()
+    {
+        // PowerToys invariant: VK_LWIN (0x5B) and VK_RWIN (0x5C) are NOT in IsExtendedKey
+        Assert.False(KeyRemapManager.IsExtendedKey(0x5B));
+        Assert.False(KeyRemapManager.IsExtendedKey(0x5C));
+    }
+
+    [Fact]
+    public void NormalMode_Keychron_WinC_Sequence_DisarmsStartMenu_And_ReleasesWinKeyCleanly()
+    {
+        var sentBatches = new List<KeyRemapManager.INPUT[]>();
+        KeyRemapManager.OnSendInputSent = batch => sentBatches.Add(batch);
+
+        var heldPhysicalKeys = new HashSet<uint>();
+        KeyRemapManager.PhysicalKeyStateOverride = vk => heldPhysicalKeys.Contains(vk);
+
+        try
+        {
+            var defaultRule = new KeyBindingRule
+            {
+                Action = KeyRemapAction.ToggleMute,
+                MappingType = KeyMappingType.Shortcut,
+                VirtualKey = 0x43, // 'C'
+                ModifiersWin = true,
+                DisplayText = "Win+C",
+                RemapVirtualKey = 0x4D, // 'M'
+                RemapModifiersCtrl = true,
+                RemapModifiersAlt = true,
+                RemapModifiersShift = true,
+                RemapModifiersWin = false,
+                RemapDisplayText = "Ctrl+Shift+Alt+M",
+                SendRemapKeys = true
+            };
+
+            using var manager = new KeyRemapManager(new[] { defaultRule }, installHook: false);
+            manager.IsRemapEnabled = true;
+
+            // 1. Keychron sends physical Win down (0x5B)
+            heldPhysicalKeys.Add(0x5B);
+            IntPtr rWinDown = manager.ProcessKeyboardEvent(WM_KEYDOWN, 0x5B);
+            Assert.Equal(IntPtr.Zero, rWinDown); // Forwarded to OS
+
+            // 2. Keychron sends physical 'C' down (0x43) while Win is held
+            heldPhysicalKeys.Add(0x43);
+            IntPtr rCDown = manager.ProcessKeyboardEvent(WM_KEYDOWN, 0x43);
+            Assert.Equal((IntPtr)1, rCDown); // Swallowed!
+
+            // Verify SendInput batch on trigger:
+            Assert.NotEmpty(sentBatches);
+            var triggerBatch = sentBatches[0];
+            // Must contain Dummy Key (0xFF), Win keyup (0x5B) WITHOUT Extended flag, and target keys
+            var dummyKeys = triggerBatch.Where(k => k.u.ki.wVk == 0xFF).ToList();
+            Assert.Equal(2, dummyKeys.Count); // Dummy down + up
+
+            var winKeyUps = triggerBatch.Where(k => k.u.ki.wVk == 0x5B && (k.u.ki.dwFlags & KeyRemapManager.KEYEVENTF_KEYUP) != 0).ToList();
+            Assert.Single(winKeyUps);
+            // CRITICAL INVARIANT: Win key must NOT have KEYEVENTF_EXTENDEDKEY (matches PowerToys)
+            Assert.Equal(0u, winKeyUps[0].u.ki.dwFlags & KeyRemapManager.KEYEVENTF_EXTENDEDKEY);
+
+            // 3. Keychron sends physical 'C' up (0x43)
+            heldPhysicalKeys.Remove(0x43);
+            IntPtr rCUp = manager.ProcessKeyboardEvent(WM_KEYUP, 0x43);
+            Assert.Equal((IntPtr)1, rCUp); // Swallowed!
+
+            // 4. Keychron sends physical Win up (0x5B)
+            heldPhysicalKeys.Remove(0x5B);
+            int countBeforeWinUp = sentBatches.Count;
+            IntPtr rWinUp = manager.ProcessKeyboardEvent(WM_KEYUP, 0x5B);
+            Assert.Equal((IntPtr)1, rWinUp); // Swallowed in Case 1
+
+            // Verify release batch in Case 1:
+            Assert.True(sentBatches.Count > countBeforeWinUp);
+            var releaseBatch = sentBatches.Last();
+
+            // Must contain Dummy Key (0xFF) to disarm Start Menu
+            Assert.Contains(releaseBatch, k => k.u.ki.wVk == 0xFF);
+            // Must contain explicit Win keyup (0x5B) to ensure Windows kernel modifier state is clean
+            var finalWinUps = releaseBatch.Where(k => k.u.ki.wVk == 0x5B && (k.u.ki.dwFlags & KeyRemapManager.KEYEVENTF_KEYUP) != 0).ToList();
+            Assert.Single(finalWinUps);
+            Assert.Equal(0u, finalWinUps[0].u.ki.dwFlags & KeyRemapManager.KEYEVENTF_EXTENDEDKEY);
+
+            // 5. Subsequent user keypress: User presses 'D' (0x44) to type or work
+            sentBatches.Clear();
+            IntPtr rDDown = manager.ProcessKeyboardEvent(WM_KEYDOWN, 0x44);
+            // Must NOT be swallowed, must NOT inject Win key!
+            Assert.Equal(IntPtr.Zero, rDDown); // Forwarded to OS cleanly
+            // No injected batches with Win key down!
+            Assert.DoesNotContain(sentBatches.SelectMany(b => b), k => k.u.ki.wVk == 0x5B && (k.u.ki.dwFlags & KeyRemapManager.KEYEVENTF_KEYUP) == 0);
+        }
+        finally
+        {
+            KeyRemapManager.OnSendInputSent = null;
+            KeyRemapManager.PhysicalKeyStateOverride = null;
+        }
+    }
+
     private class DummyAudioEngine : IAudioLockEngine
     {
         public bool IsLocked { get; set; }

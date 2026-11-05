@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MicLock.Core\MicLock.Core.csproj" />
+    <ProjectReference Include="..\..\src\MicLock.App\MicLock.App.csproj" />
   </ItemGroup>
 
 </Project>

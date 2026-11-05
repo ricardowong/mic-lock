@@ -469,15 +469,32 @@
                                 <CheckBox Grid.Column="1" IsChecked="{Binding IsKeyRemapEnabled, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
                             </Grid>
 
+                            <!-- Live Capture Mode Banner -->
+                            <Border Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,0,6"
+                                    Visibility="{Binding IsRecordingKey, Converter={StaticResource BoolToVis}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="● RECORDING: " FontSize="10" FontWeight="Bold" Foreground="#92400E" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding LiveCaptureDisplayText}" FontSize="10" FontWeight="SemiBold" Foreground="#B45309" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Command="{Binding CancelCaptureCommand}" Content="Cancel (Esc)" 
+                                            FontSize="10" FontWeight="Bold" Foreground="#DC2626" Background="Transparent" BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
                             <!-- Linear 3-Node Remapping Pipeline -->
                             <Border Background="#F8FAFC" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="8" Padding="8,8" Margin="0,0,0,6">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="70"/>
+                                        <ColumnDefinition Width="*" MinWidth="80"/>
                                         <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*" MinWidth="80"/>
                                         <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto" MinWidth="80"/>
+                                        <ColumnDefinition Width="Auto" MinWidth="75"/>
                                     </Grid.ColumnDefinitions>
 
                                     <!-- Node 1: Physical Input Key -->
@@ -486,7 +503,7 @@
                                         <Button Command="{Binding StartCaptureInputCommand}"
                                                 Content="{Binding CurrentInputKeyText}"
                                                 Style="{StaticResource KeyChipButtonStyle}"
-                                                ToolTip="Click to capture new hardware mic key"/>
+                                                ToolTip="Click to capture new hardware mic key (or Esc to cancel)"/>
                                     </StackPanel>
 
                                     <!-- Arrow 1 -->
@@ -501,7 +518,7 @@
                                                 Foreground="#818CF8"
                                                 FontSize="9.5"
                                                 Padding="4,2"
-                                                ToolTip="Click to capture remapped target shortcut"/>
+                                                ToolTip="Click to capture remapped target shortcut (or Esc to cancel)"/>
                                     </StackPanel>
 
                                     <!-- Arrow 2 -->
@@ -517,14 +534,17 @@
                                 </Grid>
                             </Border>
 
-                            <!-- Subtext Status Row -->
+                            <!-- Subtext Status Row & Clear Controls -->
                             <Grid Margin="2,0,2,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Suppresses Windows Key in OS" FontSize="10" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Text="SendInput Active" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AccentTeal}" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Visibility="{Binding IsRecordingKey, Converter={StaticResource InverseBoolToVis}}">
+                                    <Button Command="{Binding ClearInputCommand}" Content="Clear Input" FontSize="9" Padding="5,1" Margin="0,0,4,0" Style="{StaticResource ActionButtonStyle}" Height="20" ToolTip="Reset physical input key to None"/>
+                                    <Button Command="{Binding ClearTargetCommand}" Content="Clear Target" FontSize="9" Padding="5,1" Style="{StaticResource ActionButtonStyle}" Height="20" ToolTip="Reset remapped target to None"/>
+                                </StackPanel>
                             </Grid>
                         </StackPanel>
                     </Border>

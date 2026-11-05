@@ -15,15 +15,15 @@ public enum KeyPressState
 
 public class KeyRemapManager : IDisposable
 {
-    private const int WH_KEYBOARD_LL = 13;
-    private const int WM_KEYDOWN = 0x0100;
-    private const int WM_KEYUP = 0x0101;
-    private const int WM_SYSKEYDOWN = 0x0104;
-    private const int WM_SYSKEYUP = 0x0105;
+    public const int WH_KEYBOARD_LL = 13;
+    public const int WM_KEYDOWN = 0x0100;
+    public const int WM_KEYUP = 0x0101;
+    public const int WM_SYSKEYDOWN = 0x0104;
+    public const int WM_SYSKEYUP = 0x0105;
 
-    private const uint INPUT_KEYBOARD = 1;
-    private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
-    private const uint KEYEVENTF_KEYUP = 0x0002;
+    public const uint INPUT_KEYBOARD = 1;
+    public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+    public const uint KEYEVENTF_KEYUP = 0x0002;
 
     // Microsoft PowerToys Standard Flags & Constants (from KeyboardManagerConstants.h)
     public const uint DUMMY_KEY = 0xFF; // VK_OEM_CLEAR / unassigned dummy key
@@ -99,19 +99,17 @@ public class KeyRemapManager : IDisposable
     private uint _invokedWinKey; // Stores whether physical VK_LWIN (0x5B) or VK_RWIN (0x5C) was pressed
     private uint _heldTriggerKey; // Tracks physical trigger action key to swallow trailing keyup
 
-    // UI Key Detection / Capture Mode State
+    // UI Key Detection / Capture Mode State (PowerToys Direct State Tracking)
     private bool _isCapturingInput;
     private bool _isCapturingTarget;
-    private bool _isDrainingCapture;
-    private KeyBindingRule? _pendingCapturedInputRule;
-    private (uint vk, bool c, bool a, bool s, bool w, string text)? _pendingCapturedTarget;
+    private readonly HashSet<uint> _capturingModifiers = new();
     private Action<KeyBindingRule>? _captureInputCallback;
     private Action<uint, bool, bool, bool, bool, string>? _captureTargetCallback;
     private Action? _captureCancelCallback;
 
     public bool IsHookInstalled => _hookId != IntPtr.Zero;
     public bool IsRemapEnabled { get; set; } = true;
-    public bool IsCapturing => _isCapturingInput || _isCapturingTarget || _isDrainingCapture;
+    public bool IsCapturing => _isCapturingInput || _isCapturingTarget;
 
     public List<KeyBindingRule> Bindings { get; set; } = new();
 
@@ -120,8 +118,9 @@ public class KeyRemapManager : IDisposable
     public event Action<string>? LogMessage;
     public event Action? CaptureStarted;
     public event Action? CaptureEnded;
+    public event Action<string>? CapturePreviewChanged;
 
-    public KeyRemapManager(IEnumerable<KeyBindingRule>? initialRules = null)
+    public KeyRemapManager(IEnumerable<KeyBindingRule>? initialRules = null, bool installHook = true)
     {
         _hookCallbackDelegate = HookCallback;
 
@@ -137,7 +136,10 @@ public class KeyRemapManager : IDisposable
             Bindings = KeyBindingRule.CreateDefaultRules();
         }
 
-        InstallHook();
+        if (installHook)
+        {
+            InstallHook();
+        }
     }
 
     public void InstallHook()
@@ -191,90 +193,79 @@ public class KeyRemapManager : IDisposable
     {
         lock (_lock)
         {
+            _capturingModifiers.Clear();
             _isCapturingInput = true;
             _isCapturingTarget = false;
-            _isDrainingCapture = false;
-            _pendingCapturedInputRule = null;
-            _pendingCapturedTarget = null;
             _captureInputCallback = onCaptured;
             _captureCancelCallback = onCancelled;
         }
         CaptureStarted?.Invoke();
+        CapturePreviewChanged?.Invoke("Press key... (Esc to cancel)");
     }
 
     public void StartCaptureTarget(Action<uint, bool, bool, bool, bool, string> onCaptured, Action? onCancelled = null)
     {
         lock (_lock)
         {
+            _capturingModifiers.Clear();
             _isCapturingTarget = true;
             _isCapturingInput = false;
-            _isDrainingCapture = false;
-            _pendingCapturedInputRule = null;
-            _pendingCapturedTarget = null;
             _captureTargetCallback = onCaptured;
             _captureCancelCallback = onCancelled;
         }
         CaptureStarted?.Invoke();
+        CapturePreviewChanged?.Invoke("Press keys... (Esc to cancel)");
     }
 
     public void CancelCapture()
     {
         Action? cancelCb;
+        bool hadModifiers;
         lock (_lock)
         {
-            if (!_isCapturingInput && !_isCapturingTarget && !_isDrainingCapture) return;
+            if (!_isCapturingInput && !_isCapturingTarget) return;
             _isCapturingInput = false;
             _isCapturingTarget = false;
-            _isDrainingCapture = false;
+            hadModifiers = _capturingModifiers.Count > 0;
+            _capturingModifiers.Clear();
             _captureInputCallback = null;
             _captureTargetCallback = null;
-            _pendingCapturedInputRule = null;
-            _pendingCapturedTarget = null;
             cancelCb = _captureCancelCallback;
             _captureCancelCallback = null;
         }
+
+        if (hadModifiers)
+        {
+            SuppressStartMenu();
+        }
+
         cancelCb?.Invoke();
         CaptureEnded?.Invoke();
     }
 
-    private void FinalizeCapture()
+    private string GetCapturingModifiersPreview()
     {
-        Action<KeyBindingRule>? cbInput;
-        Action<uint, bool, bool, bool, bool, string>? cbTarget;
-        KeyBindingRule? recRule;
-        (uint vk, bool c, bool a, bool s, bool w, string text)? recTarget;
-
+        bool ctrl, alt, shift, win;
         lock (_lock)
         {
-            cbInput = _captureInputCallback;
-            cbTarget = _captureTargetCallback;
-            recRule = _pendingCapturedInputRule;
-            recTarget = _pendingCapturedTarget;
-
-            _isCapturingInput = false;
-            _isCapturingTarget = false;
-            _isDrainingCapture = false;
-            _captureInputCallback = null;
-            _captureTargetCallback = null;
-            _captureCancelCallback = null;
-            _pendingCapturedInputRule = null;
-            _pendingCapturedTarget = null;
+            ctrl = _capturingModifiers.Contains(0x11) || _capturingModifiers.Contains(0xA2) || _capturingModifiers.Contains(0xA3);
+            alt = _capturingModifiers.Contains(0x12) || _capturingModifiers.Contains(0xA4) || _capturingModifiers.Contains(0xA5);
+            shift = _capturingModifiers.Contains(0x10) || _capturingModifiers.Contains(0xA0) || _capturingModifiers.Contains(0xA1);
+            win = _capturingModifiers.Contains(0x5B) || _capturingModifiers.Contains(0x5C);
         }
 
-        // PowerToys disarms Start Menu with Dummy Key 0xFF down+up
-        SuppressStartMenu();
+        var parts = new List<string>();
+        if (win) parts.Add("Win");
+        if (ctrl) parts.Add("Ctrl");
+        if (shift) parts.Add("Shift");
+        if (alt) parts.Add("Alt");
 
-        CaptureEnded?.Invoke();
-
-        if (cbInput != null && recRule != null)
+        if (parts.Count == 0)
         {
-            ThreadPool.QueueUserWorkItem(_ => cbInput(recRule));
+            return _isCapturingInput ? "Press key... (Esc to cancel)" : "Press keys... (Esc to cancel)";
         }
-        else if (cbTarget != null && recTarget.HasValue)
-        {
-            var t = recTarget.Value;
-            ThreadPool.QueueUserWorkItem(_ => cbTarget(t.vk, t.c, t.a, t.s, t.w, t.text));
-        }
+
+        return string.Join("+", parts) + "+...";
     }
 
     public void UpdateBinding(KeyBindingRule rule)
@@ -475,14 +466,26 @@ public class KeyRemapManager : IDisposable
         if (nCode >= 0)
         {
             var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            uint vkCode = hookStruct.vkCode;
+            return ProcessKeyboardEvent(nCode, wParam, hookStruct.vkCode, hookStruct.flags, hookStruct.dwExtraInfo);
+        }
+        return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
 
+    public IntPtr ProcessKeyboardEvent(int msg, uint vkCode, uint flags = 0, UIntPtr dwExtraInfo = default)
+    {
+        return ProcessKeyboardEvent(0, (IntPtr)msg, vkCode, flags, dwExtraInfo);
+    }
+
+    public IntPtr ProcessKeyboardEvent(int nCode, IntPtr wParam, uint vkCode, uint flags = 0, UIntPtr dwExtraInfo = default)
+    {
+        if (nCode >= 0)
+        {
             // PowerToys Invariant: Ignore all events injected by Keyboard Manager to prevent recursion
-            if ((hookStruct.dwExtraInfo.ToUInt64() & 1) != 0 ||
-                hookStruct.dwExtraInfo == (UIntPtr)KEYBOARDMANAGER_SHORTCUT_FLAG ||
+            if ((dwExtraInfo.ToUInt64() & 1) != 0 ||
+                dwExtraInfo == (UIntPtr)KEYBOARDMANAGER_SHORTCUT_FLAG ||
                 vkCode == DUMMY_KEY)
             {
-                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+                return _hookId != IntPtr.Zero ? CallNextHookEx(_hookId, nCode, wParam, IntPtr.Zero) : IntPtr.Zero;
             }
 
             int msg = wParam.ToInt32();
@@ -492,79 +495,113 @@ public class KeyRemapManager : IDisposable
             if (isDown || isUp)
             {
                 // =================================================================================
-                // 1. CAPTURE / DETECTION MODE (PowerToys KeyboardManagerState.cpp lines 379-402)
+                // 1. CAPTURE / DETECTION MODE (PowerToys Direct State Tracking)
                 // =================================================================================
-                if (_isCapturingInput || _isCapturingTarget || _isDrainingCapture)
+                if (_isCapturingInput || _isCapturingTarget)
                 {
                     if (isDown)
                     {
-                        // Escape pressed alone cancels capture
-                        if (vkCode == 0x1B && !_isDrainingCapture)
+                        // Escape pressed alone (with no modifiers) cancels capture immediately
+                        if (vkCode == 0x1B && _capturingModifiers.Count == 0)
                         {
-                            GetPhysicalModifiers(out bool c, out bool a, out bool s, out bool w);
-                            if (!c && !a && !s && !w)
-                            {
-                                CancelCapture();
-                                return (IntPtr)1; // Pure suppression
-                            }
+                            CancelCapture();
+                            return (IntPtr)1; // Pure suppression
                         }
 
                         if (IsModifierKey(vkCode))
                         {
+                            lock (_lock)
+                            {
+                                _capturingModifiers.Add(vkCode);
+                                uint norm = NormalizeModifier(vkCode);
+                                if (norm != 0) _capturingModifiers.Add(norm);
+                            }
+
+                            string preview = GetCapturingModifiersPreview();
+                            CapturePreviewChanged?.Invoke(preview);
                             return (IntPtr)1; // Pure suppression of modifier keydown
                         }
-                        else if (!_isDrainingCapture)
+                        else
                         {
-                            // Trigger action key detected!
-                            GetPhysicalModifiers(out bool ctrl, out bool alt, out bool shift, out bool win);
+                            // Trigger action key detected! Record complete shortcut immediately using _capturingModifiers
+                            bool ctrl, alt, shift, win;
+                            lock (_lock)
+                            {
+                                ctrl = _capturingModifiers.Contains(0x11) || _capturingModifiers.Contains(0xA2) || _capturingModifiers.Contains(0xA3);
+                                alt = _capturingModifiers.Contains(0x12) || _capturingModifiers.Contains(0xA4) || _capturingModifiers.Contains(0xA5);
+                                shift = _capturingModifiers.Contains(0x10) || _capturingModifiers.Contains(0xA0) || _capturingModifiers.Contains(0xA1);
+                                win = _capturingModifiers.Contains(0x5B) || _capturingModifiers.Contains(0x5C);
+                            }
+
                             bool hasModifiers = ctrl || alt || shift || win;
                             string displayCombo = FormatKeyCombination(vkCode, ctrl, alt, shift, win);
 
+                            Action<KeyBindingRule>? cbInput;
+                            Action<uint, bool, bool, bool, bool, string>? cbTarget;
+                            bool isInput;
+
                             lock (_lock)
                             {
-                                if (_isCapturingInput)
-                                {
-                                    _pendingCapturedInputRule = new KeyBindingRule
-                                    {
-                                        VirtualKey = vkCode,
-                                        ModifiersCtrl = ctrl,
-                                        ModifiersAlt = alt,
-                                        ModifiersShift = shift,
-                                        ModifiersWin = win,
-                                        MappingType = hasModifiers ? KeyMappingType.Shortcut : KeyMappingType.SingleKey,
-                                        SuppressOriginalKey = true,
-                                        DisplayText = displayCombo
-                                    };
-                                }
-                                else if (_isCapturingTarget)
-                                {
-                                    _pendingCapturedTarget = (vkCode, ctrl, alt, shift, win, displayCombo);
-                                }
+                                isInput = _isCapturingInput;
+                                cbInput = _captureInputCallback;
+                                cbTarget = _captureTargetCallback;
 
-                                _isDrainingCapture = true;
+                                _isCapturingInput = false;
+                                _isCapturingTarget = false;
+                                _capturingModifiers.Clear();
+                                _captureInputCallback = null;
+                                _captureTargetCallback = null;
+                                _captureCancelCallback = null;
                             }
 
-                            // If no modifiers were physically held (single key tap), finalize immediately
-                            if (!AreAnyModifiersPhysicallyHeld())
+                            // PowerToys disarms Start Menu with Dummy Key 0xFF down+up
+                            SuppressStartMenu();
+
+                            CaptureEnded?.Invoke();
+
+                            if (isInput && cbInput != null)
                             {
-                                FinalizeCapture();
+                                var rule = new KeyBindingRule
+                                {
+                                    VirtualKey = vkCode,
+                                    ModifiersCtrl = ctrl,
+                                    ModifiersAlt = alt,
+                                    ModifiersShift = shift,
+                                    ModifiersWin = win,
+                                    MappingType = hasModifiers ? KeyMappingType.Shortcut : KeyMappingType.SingleKey,
+                                    SuppressOriginalKey = true,
+                                    DisplayText = displayCombo
+                                };
+                                ThreadPool.QueueUserWorkItem(_ => cbInput(rule));
+                            }
+                            else if (!isInput && cbTarget != null)
+                            {
+                                ThreadPool.QueueUserWorkItem(_ => cbTarget(vkCode, ctrl, alt, shift, win, displayCombo));
                             }
 
                             return (IntPtr)1; // Pure suppression of trigger keydown
                         }
-                        else
-                        {
-                            return (IntPtr)1; // Key repeat while draining
-                        }
                     }
                     else if (isUp)
                     {
-                        if (_isDrainingCapture)
+                        if (IsModifierKey(vkCode))
                         {
-                            if (!AreAnyModifiersPhysicallyHeld())
+                            lock (_lock)
                             {
-                                FinalizeCapture();
+                                _capturingModifiers.Remove(vkCode);
+                                uint norm = NormalizeModifier(vkCode);
+                                if (norm == 0x11 && !_capturingModifiers.Contains(0xA2) && !_capturingModifiers.Contains(0xA3))
+                                    _capturingModifiers.Remove(0x11);
+                                else if (norm == 0x12 && !_capturingModifiers.Contains(0xA4) && !_capturingModifiers.Contains(0xA5))
+                                    _capturingModifiers.Remove(0x12);
+                                else if (norm == 0x10 && !_capturingModifiers.Contains(0xA0) && !_capturingModifiers.Contains(0xA1))
+                                    _capturingModifiers.Remove(0x10);
+                                else if (norm == 0x5B && !_capturingModifiers.Contains(0x5B) && !_capturingModifiers.Contains(0x5C))
+                                    _capturingModifiers.Remove(0x5B);
                             }
+
+                            string preview = GetCapturingModifiersPreview();
+                            CapturePreviewChanged?.Invoke(preview);
                         }
 
                         return (IntPtr)1; // Suppress all keyups during capture
@@ -810,7 +847,7 @@ public class KeyRemapManager : IDisposable
         }
 
         // Default: Forward unmodified to Windows kernel
-        return CallNextHookEx(_hookId, nCode, wParam, lParam);
+        return _hookId != IntPtr.Zero ? CallNextHookEx(_hookId, nCode, wParam, IntPtr.Zero) : IntPtr.Zero;
     }
 
     public static string FormatKeyName(uint vkCode)

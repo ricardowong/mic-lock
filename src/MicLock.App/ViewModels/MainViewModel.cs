@@ -159,10 +159,39 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _keyRemapManager.ActionTriggered += OnRemapActionTriggered;
         _keyRemapManager.RemapExecuted += OnKeyRemapExecuted;
         _keyRemapManager.LogMessage += OnKeyRemapLogMessage;
+        _keyRemapManager.CaptureStarted += () => _dispatcher.Invoke(() =>
+        {
+            OnPropertyChanged(nameof(IsRecordingKey));
+            OnPropertyChanged(nameof(CurrentInputKeyText));
+            OnPropertyChanged(nameof(CurrentRemapTargetText));
+            OnPropertyChanged(nameof(LiveCaptureDisplayText));
+        });
+
+        _keyRemapManager.CapturePreviewChanged += preview => _dispatcher.Invoke(() =>
+        {
+            _liveCapturePreview = preview;
+            OnPropertyChanged(nameof(LiveCaptureDisplayText));
+            if (_isCapturingInput)
+            {
+                OnPropertyChanged(nameof(CurrentInputKeyText));
+            }
+            if (_isCapturingTarget)
+            {
+                OnPropertyChanged(nameof(CurrentRemapTargetText));
+            }
+        });
+
         _keyRemapManager.CaptureEnded += () => _dispatcher.Invoke(() =>
         {
-            IsCapturingInput = false;
-            IsCapturingTarget = false;
+            _isCapturingInput = false;
+            _isCapturingTarget = false;
+            _liveCapturePreview = string.Empty;
+            OnPropertyChanged(nameof(IsCapturingInput));
+            OnPropertyChanged(nameof(IsCapturingTarget));
+            OnPropertyChanged(nameof(IsRecordingKey));
+            OnPropertyChanged(nameof(CurrentInputKeyText));
+            OnPropertyChanged(nameof(CurrentRemapTargetText));
+            OnPropertyChanged(nameof(LiveCaptureDisplayText));
         });
 
         UpdateRemapDisplayForCurrentAction();
@@ -355,18 +384,78 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private string _liveCapturePreview = string.Empty;
+
     public string CurrentInputKeyText
     {
-        get => _currentInputKeyText;
-        private set => SetProperty(ref _currentInputKeyText, value);
+        get
+        {
+            if (IsCapturingInput)
+            {
+                return string.IsNullOrEmpty(_liveCapturePreview)
+                    ? "Press key... (Esc to cancel)"
+                    : _liveCapturePreview;
+            }
+            return _currentInputKeyText;
+        }
+        private set
+        {
+            if (SetProperty(ref _currentInputKeyText, value))
+            {
+                OnPropertyChanged(nameof(CurrentRemapBindingText));
+            }
+        }
     }
 
     public string CurrentRemapBindingText => CurrentInputKeyText;
 
     public string CurrentRemapTargetText
     {
-        get => _currentRemapTargetText;
+        get
+        {
+            if (IsCapturingTarget)
+            {
+                return string.IsNullOrEmpty(_liveCapturePreview)
+                    ? "Press keys... (Esc to cancel)"
+                    : _liveCapturePreview;
+            }
+            return _currentRemapTargetText;
+        }
         private set => SetProperty(ref _currentRemapTargetText, value);
+    }
+
+    public string LiveCapturePreview
+    {
+        get => _liveCapturePreview;
+        set
+        {
+            if (SetProperty(ref _liveCapturePreview, value))
+            {
+                OnPropertyChanged(nameof(LiveCaptureDisplayText));
+                if (_isCapturingInput)
+                {
+                    OnPropertyChanged(nameof(CurrentInputKeyText));
+                }
+                if (_isCapturingTarget)
+                {
+                    OnPropertyChanged(nameof(CurrentRemapTargetText));
+                }
+            }
+        }
+    }
+
+    public string LiveCaptureDisplayText
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_liveCapturePreview))
+            {
+                return _liveCapturePreview;
+            }
+            if (_isCapturingInput) return "Press key... (Esc to cancel)";
+            if (_isCapturingTarget) return "Press keys... (Esc to cancel)";
+            return string.Empty;
+        }
     }
 
     public bool IsSendRemapKeysEnabled
@@ -421,6 +510,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(CaptureInputButtonText));
                 OnPropertyChanged(nameof(RecordButtonText));
                 OnPropertyChanged(nameof(IsRecordingKey));
+                OnPropertyChanged(nameof(CurrentInputKeyText));
+                OnPropertyChanged(nameof(LiveCaptureDisplayText));
             }
         }
     }
@@ -436,6 +527,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 OnPropertyChanged(nameof(CaptureTargetButtonText));
                 OnPropertyChanged(nameof(IsRecordingKey));
+                OnPropertyChanged(nameof(CurrentRemapTargetText));
+                OnPropertyChanged(nameof(LiveCaptureDisplayText));
             }
         }
     }
@@ -446,8 +539,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void StartCaptureInput()
     {
+        if (IsCapturingInput)
+        {
+            CancelCapture();
+            return;
+        }
+
         IsKeyRemapEnabled = true;
+        _liveCapturePreview = string.Empty;
+        IsCapturingTarget = false;
         IsCapturingInput = true;
+
         _keyRemapManager.StartCaptureInput(
             onCaptured: rule =>
             {
@@ -483,8 +585,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     _settingsManager.Current.IsKeyRemapEnabled = true;
                     _settingsManager.Save();
 
-                    CurrentInputKeyText = current.DisplayText;
+                    _currentInputKeyText = current.DisplayText;
+                    _liveCapturePreview = string.Empty;
                     IsCapturingInput = false;
+
                     UpdateRemapSummary();
                     AddActivityLog($"[Remap Config] Set input key for '{SelectedRemapAction.DisplayName}' to '{current.DisplayText}'");
                 });
@@ -493,6 +597,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _dispatcher.Invoke(() =>
                 {
+                    _liveCapturePreview = string.Empty;
                     IsCapturingInput = false;
                 });
             });
@@ -500,8 +605,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void StartCaptureTarget()
     {
+        if (IsCapturingTarget)
+        {
+            CancelCapture();
+            return;
+        }
+
         IsKeyRemapEnabled = true;
+        _liveCapturePreview = string.Empty;
+        IsCapturingInput = false;
         IsCapturingTarget = true;
+
         _keyRemapManager.StartCaptureTarget(
             onCaptured: (vk, ctrl, alt, shift, win, displayCombo) =>
             {
@@ -535,9 +649,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     }
                     _settingsManager.Save();
 
-                    CurrentRemapTargetText = current.RemapDisplayText;
+                    _currentRemapTargetText = current.RemapDisplayText;
                     IsSendRemapKeysEnabled = true;
+                    _liveCapturePreview = string.Empty;
                     IsCapturingTarget = false;
+
                     UpdateRemapSummary();
                     AddActivityLog($"[Remap Config] Set target remapped shortcut for '{SelectedRemapAction.DisplayName}' to '{current.RemapDisplayText}'");
                 });
@@ -546,6 +662,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _dispatcher.Invoke(() =>
                 {
+                    _liveCapturePreview = string.Empty;
                     IsCapturingTarget = false;
                 });
             });
@@ -554,6 +671,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public void CancelCapture()
     {
         _keyRemapManager.CancelCapture();
+        _liveCapturePreview = string.Empty;
         IsCapturingInput = false;
         IsCapturingTarget = false;
     }
@@ -582,7 +700,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 settingRule.DisplayText = "None";
             }
             _settingsManager.Save();
-            CurrentInputKeyText = "None";
+            _currentInputKeyText = "None";
+            OnPropertyChanged(nameof(CurrentInputKeyText));
             UpdateRemapSummary();
             AddActivityLog($"[Remap Config] Cleared physical input key for '{SelectedRemapAction.DisplayName}'");
         }
@@ -614,7 +733,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 settingRule.SendRemapKeys = false;
             }
             _settingsManager.Save();
-            CurrentRemapTargetText = "None";
+            _currentRemapTargetText = "None";
+            OnPropertyChanged(nameof(CurrentRemapTargetText));
             IsSendRemapKeysEnabled = false;
             UpdateRemapSummary();
             AddActivityLog($"[Remap Config] Cleared remap target for '{SelectedRemapAction.DisplayName}'");

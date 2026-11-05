@@ -5,42 +5,43 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MicLock.App"
         mc:Ignorable="d"
-        Title="MicAnchor - Microphone Volume Lock &amp; Remap"
-        Height="540" Width="440"
-        MinHeight="480" MinWidth="400"
+        Title="MicAnchor"
+        Height="630" Width="440"
+        MinHeight="580" MinWidth="420"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterScreen"
-        Background="#F8FAFC"
-        Foreground="#0F172A"
-        FontFamily="Segoe UI Variable Text, Segoe UI, -apple-system, sans-serif"
+        FontFamily="Segoe UI Variable Text, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
         Icon="Assets/app.ico">
 
     <Window.Resources>
-        <!-- Colors -->
-        <SolidColorBrush x:Key="WindowBackground" Color="#F8FAFC"/>
-        <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF"/>
+        <!-- Palette Tokens -->
+        <SolidColorBrush x:Key="WindowBg" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="CardBg" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="CardBorder" Color="#E2E8F0"/>
         <SolidColorBrush x:Key="TextPrimary" Color="#0F172A"/>
         <SolidColorBrush x:Key="TextSecondary" Color="#475569"/>
         <SolidColorBrush x:Key="TextMuted" Color="#94A3B8"/>
         <SolidColorBrush x:Key="AccentTeal" Color="#0284C7"/>
-        <SolidColorBrush x:Key="AccentTealHover" Color="#0369A1"/>
         <SolidColorBrush x:Key="AccentTealSoft" Color="#E0F2FE"/>
         <SolidColorBrush x:Key="AccentTealBorder" Color="#BAE6FD"/>
+        <SolidColorBrush x:Key="ActiveGreen" Color="#10B981"/>
         <SolidColorBrush x:Key="DangerRed" Color="#EF4444"/>
 
-        <!-- BooleanToVisibilityConverter -->
+        <!-- Converters -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <local:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
 
-        <!-- Fluent iOS/Win11 Toggle Switch -->
+        <!-- Fluent iOS / macOS Style Toggle Switch -->
         <Style x:Key="FluentToggleSwitch" TargetType="CheckBox">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Border x:Name="Track" Width="38" Height="22" CornerRadius="11"
+                        <Border x:Name="Track" Width="40" Height="22" CornerRadius="11"
                                 Background="#CBD5E1" VerticalAlignment="Center">
                             <Ellipse x:Name="Thumb" Width="16" Height="16" Fill="#FFFFFF"
                                      HorizontalAlignment="Left" Margin="3,0,0,0">
@@ -64,29 +65,19 @@
             </Setter>
         </Style>
 
-        <!-- Fluent Checkbox -->
-        <Style x:Key="FluentCheckbox" TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#334155"/>
-            <Setter Property="FontSize" Value="11.5"/>
+        <!-- macOS Window Control Dot Style -->
+        <Style x:Key="TrafficDotStyle" TargetType="Button">
+            <Setter Property="Width" Value="12"/>
+            <Setter Property="Height" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border x:Name="Box" Width="16" Height="16" CornerRadius="4" Background="#FFFFFF" BorderBrush="#CBD5E1" BorderThickness="1.5" Margin="0,0,8,0">
-                                <Path x:Name="Check" Data="M3,7.5 L6,10.5 L11.5,3.5" Stroke="#FFFFFF" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
-                            </Border>
-                            <ContentPresenter VerticalAlignment="Center"/>
-                        </StackPanel>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Dot" Width="12" Height="12" CornerRadius="6" Background="{TemplateBinding Background}"/>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentTeal}"/>
-                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentTeal}"/>
-                                <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
-                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentTeal}"/>
+                                <Setter Property="Opacity" Value="0.8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -99,9 +90,9 @@
             <Setter Property="Background" Value="#0F172A"/>
             <Setter Property="Foreground" Value="#38BDF8"/>
             <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontFamily" Value="Consolas, JetBrains Mono, monospace"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Height" Value="28"/>
+            <Setter Property="FontFamily" Value="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Height" Value="26"/>
             <Setter Property="Padding" Value="8,2"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="#334155"/>
@@ -113,7 +104,7 @@
                         <Border x:Name="ChipBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6"
+                                CornerRadius="5"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -128,9 +119,9 @@
             </Setter>
         </Style>
 
-        <!-- Secondary Action Button Style -->
+        <!-- Clean Secondary Action Button Style -->
         <Style x:Key="ActionButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#F1F5F9"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
             <Setter Property="Foreground" Value="#334155"/>
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -143,28 +134,28 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
+                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#F1F5F9"/>
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="{StaticResource AccentTeal}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#E2E8F0"/>
-                    <Setter Property="BorderBrush" Value="#94A3B8"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
-        <!-- Modern Slider -->
+        <!-- Modern Continuous Slider Style -->
         <Style x:Key="ModernSlider" TargetType="Slider">
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Height" Value="24"/>
+            <Setter Property="Height" Value="22"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Slider">
@@ -174,7 +165,7 @@
                                     <RepeatButton Command="Slider.DecreaseLarge">
                                         <RepeatButton.Template>
                                             <ControlTemplate>
-                                                <Border Height="6" CornerRadius="3" Background="{StaticResource AccentTeal}"/>
+                                                <Border Height="5" CornerRadius="2.5" Background="{StaticResource AccentTeal}"/>
                                             </ControlTemplate>
                                         </RepeatButton.Template>
                                     </RepeatButton>
@@ -183,7 +174,7 @@
                                     <RepeatButton Command="Slider.IncreaseLarge">
                                         <RepeatButton.Template>
                                             <ControlTemplate>
-                                                <Border Height="6" CornerRadius="3" Background="#E2E8F0"/>
+                                                <Border Height="5" CornerRadius="2.5" Background="#E2E8F0"/>
                                             </ControlTemplate>
                                         </RepeatButton.Template>
                                     </RepeatButton>
@@ -192,10 +183,10 @@
                                     <Thumb Cursor="Hand">
                                         <Thumb.Template>
                                             <ControlTemplate>
-                                                <Grid Width="18" Height="18">
+                                                <Grid Width="16" Height="16">
                                                     <Ellipse Fill="#FFFFFF" Stroke="{StaticResource AccentTeal}" StrokeThickness="2.5">
                                                         <Ellipse.Effect>
-                                                            <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.15"/>
+                                                            <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.2"/>
                                                         </Ellipse.Effect>
                                                     </Ellipse>
                                                 </Grid>
@@ -209,380 +200,524 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Gradient VU Meter Bar Style -->
+        <Style x:Key="GradientVuProgressBarStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="#E2E8F0" CornerRadius="2.5" ClipToBounds="True">
+                            <Grid x:Name="PART_Track">
+                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left" CornerRadius="2.5">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#10B981" Offset="0.0"/>
+                                            <GradientStop Color="#0284C7" Offset="0.75"/>
+                                            <GradientStop Color="#EF4444" Offset="1.0"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Clean Modern ComboBox Style -->
+        <Style x:Key="ModernComboBox" TargetType="ComboBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton"
+                                          Focusable="False"
+                                          IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ClickMode="Press">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="Border"
+                                                Background="#F8FAFC"
+                                                BorderBrush="#CBD5E1"
+                                                BorderThickness="1"
+                                                CornerRadius="7">
+                                            <Grid Margin="10,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Path x:Name="Arrow"
+                                                      Grid.Column="1"
+                                                      Data="M0,0 L3.5,3.5 L7,0"
+                                                      Stroke="#64748B"
+                                                      StrokeThickness="1.5"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      VerticalAlignment="Center"
+                                                      HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentTeal}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="ContentSite"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="10,0,26,0"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"/>
+                            <Popup x:Name="Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Grid x:Name="DropDown"
+                                      MinWidth="{TemplateBinding ActualWidth}"
+                                      MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border x:Name="DropDownBorder"
+                                            Background="#FFFFFF"
+                                            BorderThickness="1"
+                                            BorderBrush="#CBD5E1"
+                                            CornerRadius="7"
+                                            Margin="0,3,0,0">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270" Opacity="0.12"/>
+                                        </Border.Effect>
+                                        <ScrollViewer Margin="3" SnapsToDevicePixels="True">
+                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
-    <Grid Margin="16,12,16,12">
-        <Grid.RowDefinitions>
-            <!-- 0: Header -->
-            <RowDefinition Height="Auto"/>
-            <!-- 1: Main Content or Settings Overlay -->
-            <RowDefinition Height="*"/>
-            <!-- 2: Footer -->
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <!-- Outer Window Card with macOS Superellipse Borders -->
+    <Border Background="{StaticResource WindowBg}"
+            BorderBrush="#CBD5E1"
+            BorderThickness="1"
+            CornerRadius="13"
+            ClipToBounds="True">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="20" ShadowDepth="6" Direction="270" Opacity="0.25"/>
+        </Border.Effect>
 
-        <!-- 0. Header Bar (Brand + Status Badge + Settings Gear) -->
-        <Grid Grid.Row="0" Margin="0,0,0,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- 0: Title Bar -->
+                <RowDefinition Height="36"/>
+                <!-- 1: Main Dashboard or Settings Flyout -->
+                <RowDefinition Height="*"/>
+                <!-- 2: Clean Footer -->
+                <RowDefinition Height="28"/>
+            </Grid.RowDefinitions>
 
-            <!-- Brand Icon & App Title -->
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Width="30" Height="30" CornerRadius="7" Background="{StaticResource AccentTealSoft}" BorderBrush="{StaticResource AccentTealBorder}" BorderThickness="1" Margin="0,0,10,0">
-                    <Path Data="M12,2 C10.34,2 9,3.34 9,5 L9,11 C9,12.66 10.34,14 12,14 C13.66,14 15,12.66 15,11 L15,5 C15,3.34 13.66,2 12,2 Z M6.5,10 C6.5,13.04 8.96,15.5 12,15.5 C15.04,15.5 17.5,13.04 17.5,10 L19,10 C19,13.53 16.39,16.43 13,16.92 L13,19.5 L16.5,19.5 C16.78,19.5 17,19.72 17,20 C17,20.28 16.78,20.5 16.5,20.5 L7.5,20.5 C7.22,20.5 7,20.28 7,20 C7,19.72 7.22,19.5 7.5,19.5 L11,19.5 L11,16.92 C7.61,16.43 5,13.53 5,10 L6.5,10 Z"
-                          Fill="{StaticResource AccentTeal}" Width="15" Height="15" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="MicAnchor" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                    <TextBlock Text="Microphone Volume Lock &amp; Remap" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
-                </StackPanel>
-            </StackPanel>
+            <!-- 0. macOS-Style Clean Title Bar -->
+            <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#F1F5F9" BorderThickness="0,0,0,1"
+                    MouseDown="TitleBar_MouseDown">
+                <Grid Margin="12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-            <!-- Right Controls: Status Pill + Settings Gear -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Background="{Binding StatusBackgroundBrush}"
-                        BorderBrush="{Binding StatusBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="12"
-                        Padding="8,3"
-                        Margin="0,0,8,0"
-                        VerticalAlignment="Center">
+                    <!-- Left: Window Controls (Red, Yellow, Green Traffic Lights) -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse Width="6" Height="6" Fill="{Binding StatusBrush}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding StatusText}"
-                                   FontSize="10.5"
-                                   FontWeight="SemiBold"
-                                   Foreground="{Binding StatusForegroundBrush}"
-                                   VerticalAlignment="Center"/>
+                        <Button Style="{StaticResource TrafficDotStyle}" Background="#FF5F56" Margin="0,0,6,0" Click="CloseButton_Click" ToolTip="Minimize to System Tray"/>
+                        <Button Style="{StaticResource TrafficDotStyle}" Background="#FFBD2E" Margin="0,0,6,0" Click="MinimizeButton_Click" ToolTip="Minimize Window"/>
+                        <Button Style="{StaticResource TrafficDotStyle}" Background="#27C93F" Command="{Binding ToggleSettingsCommand}" ToolTip="Settings &amp; Advanced"/>
                     </StackPanel>
-                </Border>
 
-                <!-- Settings Flyout Toggle Button -->
-                <Button Command="{Binding ToggleSettingsCommand}"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Cursor="Hand"
-                        Padding="4"
-                        ToolTip="Advanced &amp; Settings"
-                        VerticalAlignment="Center">
-                    <TextBlock Text="⚙" FontSize="15" Foreground="{StaticResource TextSecondary}"/>
-                </Button>
-            </StackPanel>
-        </Grid>
-
-        <!-- 1. Body Content -->
-        <Grid Grid.Row="1">
-            <!-- Normal 3-Section Dashboard View -->
-            <StackPanel Visibility="{Binding IsSettingsOpen, Converter={StaticResource InverseBoolToVis}}">
-                
-                <!-- SECTION 1: LOCK MICROPHONE -->
-                <Border Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="10" Padding="12,10" Margin="0,0,0,8">
-                    <StackPanel>
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="1. LOCK MICROPHONE" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}"/>
-                            <Button Grid.Column="1" Command="{Binding CycleRecordingDeviceCommand}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource AccentTeal}" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Content="Cycle Next ⟳" Margin="0,0,8,0"/>
-                            <Button Grid.Column="2" Command="{Binding RefreshDevicesCommand}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextSecondary}" FontSize="11" Cursor="Hand" Content="Refresh"/>
-                        </Grid>
-
-                        <!-- Device Selector -->
-                        <ComboBox ItemsSource="{Binding AvailableDevices}"
-                                  SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
-                                  Background="#FFFFFF"
-                                  Foreground="{StaticResource TextPrimary}"
-                                  BorderBrush="#CBD5E1"
-                                  BorderThickness="1"
-                                  Height="32"
-                                  Padding="8,4"
-                                  FontSize="11.5"
-                                  Margin="0,0,0,8">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="Medium" Foreground="{StaticResource TextPrimary}"/>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-
-                        <!-- Lock Active Mic Endpoint Toggle -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Lock Active Microphone" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="Enforces default recording device in Windows; blocks external app switches" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
-                            </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding IsMicLockEnabled, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
+                    <!-- Center: Centered Minimalist Title with SF-Style Vector Mic Icon -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Canvas Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center">
+                            <!-- Crisp Apple SF-style Mic Capsule -->
+                            <Path Data="M7,1 C5.9,1 5,1.9 5,3 L5,6 C5,7.1 5.9,8 7,8 C8.1,8 9,7.1 9,6 L9,3 C9,1.9 8.1,1 7,1 Z" Fill="{StaticResource AccentTeal}"/>
+                            <!-- Cradle Arc -->
+                            <Path Data="M3,5 C3,7.2 4.8,9 7,9 C9.2,9 11,7.2 11,5" Stroke="{StaticResource AccentTeal}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            <!-- Stem & Base -->
+                            <Path Data="M7,9 L7,11.5 M5,11.5 L9,11.5" Stroke="{StaticResource AccentTeal}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Canvas>
+                        <TextBlock Text="MicAnchor" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
                     </StackPanel>
-                </Border>
 
-                <!-- SECTION 2: LOCK VOLUME -->
-                <Border Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="10" Padding="12,10" Margin="0,0,0,8">
-                    <StackPanel>
-                        <!-- Section Header + Master Lock Switch -->
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="2. LOCK VOLUME" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}"/>
-                                <TextBlock Text="Restores level instantly if another app (Discord, Zoom) alters it" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
+                    <!-- Right: Status Pill & Settings Gear -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Status Pill -->
+                        <Border Background="{Binding StatusBackgroundBrush}"
+                                BorderBrush="{Binding StatusBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="7,2"
+                                Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse Width="5.5" Height="5.5" Fill="{Binding StatusBrush}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding StatusText}" FontSize="10" FontWeight="SemiBold" Foreground="{Binding StatusForegroundBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding IsLocked, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
+                        </Border>
 
-                        <!-- Target Volume Readout & Continuous Slider -->
-                        <Grid Margin="0,2,0,2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Target Level" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" Text="{Binding TargetVolumePercent, StringFormat='{}{0}%'}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource AccentTeal}"/>
-                        </Grid>
-
-                        <Slider Minimum="0" Maximum="100"
-                                Value="{Binding TargetVolumePercent, Mode=TwoWay}"
-                                Margin="0,0,0,6"
-                                Style="{StaticResource ModernSlider}"/>
-
-                        <!-- Integrated Live Level Strip -->
-                        <Grid Margin="0,2,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="INPUT LEVEL" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding CurrentVolumePercent, Mode=OneWay}"
-                                         Height="5" Background="#E2E8F0" Foreground="{StaticResource AccentTeal}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" Text="{Binding CurrentVolumePercent, StringFormat='{}{0}%'}"
-                                       FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                        </Grid>
+                        <!-- Settings Gear Toggle -->
+                        <Button Command="{Binding ToggleSettingsCommand}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Padding="2"
+                                ToolTip="Settings &amp; Backup"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="⚙" FontSize="13" Foreground="{StaticResource TextSecondary}"/>
+                        </Button>
                     </StackPanel>
-                </Border>
+                </Grid>
+            </Border>
 
-                <!-- SECTION 3: REMAP AND TOGGLE MUTE -->
-                <Border Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="10" Padding="12,10" Margin="0,0,0,6">
+            <!-- 1. Body Content -->
+            <Grid Grid.Row="1" Margin="14,10,14,0">
+
+                <!-- MAIN DASHBOARD VIEW (3 Clean Unified Cards) -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              Visibility="{Binding IsSettingsOpen, Converter={StaticResource InverseBoolToVis}}">
                     <StackPanel>
-                        <!-- Header & Remap Switch -->
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="3. REMAP &amp; TOGGLE MUTE" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}"/>
-                                <TextBlock Text="Suppresses Windows key, remaps hardware keys via SendInput" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
+
+                        <!-- ========================================================================= -->
+                        <!-- CARD 1: MICROPHONE & LEVEL -->
+                        <!-- ========================================================================= -->
+                        <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="11" Padding="14,11" Margin="0,0,0,9">
+                            <StackPanel>
+                                <!-- Header Row with Cycle Next Link -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="MICROPHONE &amp; LEVEL" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Command="{Binding CycleRecordingDeviceCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" VerticalAlignment="Center">
+                                        <TextBlock Text="Cycle Next ↻" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource AccentTeal}"/>
+                                    </Button>
+                                </Grid>
+
+                                <!-- Audio Device ComboBox -->
+                                <ComboBox ItemsSource="{Binding AvailableDevices}"
+                                          SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                                          Style="{StaticResource ModernComboBox}"
+                                          Margin="0,0,0,10">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <!-- Target Volume Header & Readout -->
+                                <Grid Margin="0,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Target Volume" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding TargetVolumePercent, StringFormat='{}{0}%'}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentTeal}"/>
+                                </Grid>
+
+                                <!-- Continuous Volume Slider -->
+                                <Slider Minimum="0" Maximum="100"
+                                        Value="{Binding TargetVolumePercent, Mode=TwoWay}"
+                                        Style="{StaticResource ModernSlider}"
+                                        Margin="0,0,0,8"/>
+
+                                <!-- Live Input VU Meter -->
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="LIVE INPUT" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextMuted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <ProgressBar Grid.Column="1" Minimum="0" Maximum="100"
+                                                 Value="{Binding CurrentVolumePercent, Mode=OneWay}"
+                                                 Style="{StaticResource GradientVuProgressBarStyle}"
+                                                 VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <Border Height="1" Background="#F1F5F9" Margin="0,0,0,8"/>
+
+                                <!-- Toggle: Lock Volume Level -->
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Lock Volume Level" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                                        <TextBlock Text="Auto-restores level if other apps alter it" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding IsLocked, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                                </Grid>
+
+                                <!-- Toggle: Mute Microphone -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Mute Microphone" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                                        <TextBlock Text="Instantly cut off hardware stream" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding IsMuted, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                                </Grid>
                             </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding IsKeyRemapEnabled, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
+                        </Border>
 
-                        <!-- Action Selector Dropdown -->
-                        <ComboBox ItemsSource="{Binding RemapActions}"
-                                  SelectedItem="{Binding SelectedRemapAction, Mode=TwoWay}"
-                                  DisplayMemberPath="DisplayName"
-                                  Height="28"
-                                  Padding="6,3"
-                                  FontSize="11"
-                                  Background="#FFFFFF"
-                                  BorderBrush="#CBD5E1"
-                                  BorderThickness="1"
-                                  Margin="0,0,0,6"/>
+                        <!-- ========================================================================= -->
+                        <!-- CARD 2: HARDWARE KEY REMAP -->
+                        <!-- ========================================================================= -->
+                        <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="11" Padding="14,11" Margin="0,0,0,9">
+                            <StackPanel>
+                                <!-- Header Row with Remap Master Switch -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="HARDWARE KEY REMAP" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding IsKeyRemapEnabled, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                                </Grid>
 
-                        <!-- 3-Pillar Linear Remapping Pipeline -->
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
+                                <!-- Linear 3-Node Remapping Pipeline -->
+                                <Border Background="#F8FAFC" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" MinWidth="75"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto" MinWidth="85"/>
+                                        </Grid.ColumnDefinitions>
 
-                            <!-- Node 1: Input Key -->
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="INPUT KEY" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                <Button Command="{Binding StartCaptureInputCommand}"
-                                        Content="{Binding CurrentInputKeyText}"
-                                        Style="{StaticResource KeyChipButtonStyle}"
-                                        ToolTip="Click to capture new hardware mic key"/>
-                            </StackPanel>
+                                        <!-- Node 1: Physical Input Key -->
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="INPUT KEY" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,3"/>
+                                            <Button Command="{Binding StartCaptureInputCommand}"
+                                                    Content="{Binding CurrentInputKeyText}"
+                                                    Style="{StaticResource KeyChipButtonStyle}"
+                                                    ToolTip="Click to capture new hardware mic key"/>
+                                        </StackPanel>
 
-                            <TextBlock Grid.Column="1" Text="➔" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,10,4,0"/>
+                                        <!-- Arrow 1 -->
+                                        <TextBlock Grid.Column="1" Text="➔" FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,8,4,0"/>
 
-                            <!-- Node 2: Remapped Target -->
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="REMAPPED AS" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                <Button Command="{Binding StartCaptureTargetCommand}"
-                                        Content="{Binding CurrentRemapTargetText}"
-                                        Style="{StaticResource KeyChipButtonStyle}"
-                                        Foreground="#818CF8"
-                                        ToolTip="Click to change target shortcut"/>
-                            </StackPanel>
+                                        <!-- Node 2: Remapped Target -->
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="REMAPPED AS" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,3"/>
+                                            <Button Command="{Binding StartCaptureTargetCommand}"
+                                                    Content="{Binding CurrentRemapTargetText}"
+                                                    Style="{StaticResource KeyChipButtonStyle}"
+                                                    Foreground="#818CF8"
+                                                    FontSize="10"
+                                                    Padding="4,2"
+                                                    ToolTip="Click to capture remapped target shortcut"/>
+                                        </StackPanel>
 
-                            <TextBlock Grid.Column="3" Text="➔" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,10,4,0"/>
+                                        <!-- Arrow 2 -->
+                                        <TextBlock Grid.Column="3" Text="➔" FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,8,4,0"/>
 
-                            <!-- Node 3: Target Action -->
-                            <StackPanel Grid.Column="4">
-                                <TextBlock Text="ACTION" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                <Border Background="#F1F5F9" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="6" Height="28">
-                                    <TextBlock Text="Toggle Mute" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <!-- Node 3: Executed Action -->
+                                        <StackPanel Grid.Column="4">
+                                            <TextBlock Text="ACTION" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" Margin="0,0,0,3"/>
+                                            <Border Background="#FFFFFF" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="5" Height="26" Padding="6,0">
+                                                <TextBlock Text="Toggle Mute" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
+
+                                <!-- Subtext Status Row -->
+                                <Grid Margin="2,0,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Suppresses Windows Key in OS" FontSize="10" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="SendInput Active" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AccentTeal}" VerticalAlignment="Center"/>
+                                </Grid>
                             </StackPanel>
-                        </Grid>
+                        </Border>
 
-                        <Border Height="1" Background="#F1F5F9" Margin="0,2,0,6"/>
+                        <!-- ========================================================================= -->
+                        <!-- CARD 3: SYSTEM & OVERLAY -->
+                        <!-- ========================================================================= -->
+                        <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="11" Padding="14,11">
+                            <StackPanel>
+                                <TextBlock Text="SYSTEM &amp; OVERLAY" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextMuted}" Margin="0,0,0,8"/>
 
-                        <!-- Direct Mute Toggle Row -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Microphone Mute" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="Instant hardware stream cutoff" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
+                                <!-- Start with Windows Toggle -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Start with Windows" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding StartWithWindows, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                                </Grid>
+
+                                <!-- Desktop Mute Overlay Toggle -->
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Desktop Mute Overlay" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding KeepOverlayWhenMuted, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                                </Grid>
+
+                                <!-- Overlay Opacity Slider -->
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Overlay Opacity" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding OverlayOpacityPercent, Mode=TwoWay}" Style="{StaticResource ModernSlider}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding OverlayOpacityPercent, StringFormat='{}{0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                </Grid>
                             </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding IsMuted, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                        </Border>
 
-            </StackPanel>
-
-            <!-- Settings Flyout / Modal View -->
-            <Border Background="{StaticResource CardBackground}"
-                    BorderBrush="{StaticResource CardBorder}"
-                    BorderThickness="1"
-                    CornerRadius="10"
-                    Padding="14"
-                    Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVis}}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                        <!-- Settings Header -->
-                        <Grid Margin="0,0,0,12" VerticalAlignment="Center">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="ADVANCED &amp; SETTINGS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Command="{Binding ToggleSettingsCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" Content="✕ Done" FontWeight="Bold" Foreground="{StaticResource AccentTeal}"/>
-                        </Grid>
-
-                        <!-- Preferences Rows -->
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Start with Windows" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="Automatically launch on system boot" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
-                            </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding StartWithWindows, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
-
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Start Minimized" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="Launch quietly directly into system tray without opening window" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
-                            </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding StartMinimized, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
-
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Show Notifications" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="OS balloon popup when external apps alter volume and it is restored" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
-                            </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding ShowNotifications, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
-
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Persistent Desktop Mute Overlay" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="Keep on-screen badge visible on desktop while muted" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
-                            </StackPanel>
-                            <CheckBox Grid.Column="1" IsChecked="{Binding KeepOverlayWhenMuted, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
-                        </Grid>
-
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Overlay Opacity" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding OverlayOpacityPercent, Mode=TwoWay}" Style="{StaticResource ModernSlider}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" Text="{Binding OverlayOpacityPercent, StringFormat='{}{0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                        </Grid>
-
-                        <Border Height="1" Background="#F1F5F9" Margin="0,4,0,12"/>
-
-                        <!-- JSON Configuration & Backup -->
-                        <TextBlock Text="JSON CONFIGURATION &amp; BACKUP" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
-                        <TextBlock Text="Settings map directly to JSON. Backup and restore across machines or versions." FontSize="10" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
-                        
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Command="{Binding BackupSettingsCommand}" Content="Backup to JSON" Style="{StaticResource ActionButtonStyle}"/>
-                            <Button Grid.Column="2" Command="{Binding RestoreSettingsCommand}" Content="Restore JSON" Style="{StaticResource ActionButtonStyle}"/>
-                        </Grid>
-
-                        <Button Command="{Binding OpenSettingsFolderCommand}" Content="Open settings.json Folder" Style="{StaticResource ActionButtonStyle}" Margin="0,0,0,12"/>
-
-                        <Border Height="1" Background="#F1F5F9" Margin="0,4,0,12"/>
-
-                        <!-- Software Updates -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Software Updates" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text="{Binding UpdateStatusText}" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
-                            </StackPanel>
-                            <Button Grid.Column="1" Command="{Binding CheckForUpdatesCommand}" Content="Check GitHub" Style="{StaticResource ActionButtonStyle}"/>
-                        </Grid>
                     </StackPanel>
                 </ScrollViewer>
-            </Border>
-        </Grid>
 
-        <!-- 2. Minimalist Footer -->
-        <TextBlock Grid.Row="2"
-                   Text="Runs quietly in the system tray"
-                   FontSize="10"
-                   Foreground="{StaticResource TextMuted}"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Bottom"
-                   Margin="0,6,0,2"/>
-    </Grid>
+                <!-- ========================================================================= -->
+                <!-- ADVANCED SETTINGS FLYOUT DRAWER (Opened via ⚙ or Green traffic light) -->
+                <!-- ========================================================================= -->
+                <Border Background="{StaticResource CardBg}"
+                        BorderBrush="{StaticResource CardBorder}"
+                        BorderThickness="1"
+                        CornerRadius="11"
+                        Padding="14"
+                        Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVis}}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- Header -->
+                            <Grid Margin="0,0,0,12" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="ADVANCED &amp; SETTINGS" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Command="{Binding ToggleSettingsCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand">
+                                    <TextBlock Text="✕ Done" FontWeight="Bold" Foreground="{StaticResource AccentTeal}"/>
+                                </Button>
+                            </Grid>
+
+                            <!-- Preferences -->
+                            <TextBlock Text="PREFERENCES" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Start Minimized" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                                    <TextBlock Text="Launch quietly into tray on Windows boot" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" IsChecked="{Binding StartMinimized, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Show Notifications" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                                    <TextBlock Text="Balloon alerts when volume level is restored" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" IsChecked="{Binding ShowNotifications, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Lock Active Microphone Endpoint" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                                    <TextBlock Text="Blocks external apps from switching default input mic" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" IsChecked="{Binding IsMicLockEnabled, Mode=TwoWay}" Style="{StaticResource FluentToggleSwitch}"/>
+                            </Grid>
+
+                            <Border Height="1" Background="#F1F5F9" Margin="0,0,0,10"/>
+
+                            <!-- JSON Configuration & Backup -->
+                            <TextBlock Text="JSON CONFIGURATION &amp; BACKUP" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextMuted}" Margin="0,0,0,6"/>
+                            <TextBlock Text="Settings map directly to JSON. Backup and restore across machines." FontSize="10" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
+
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Command="{Binding BackupSettingsCommand}" Content="Backup to JSON" Style="{StaticResource ActionButtonStyle}"/>
+                                <Button Grid.Column="2" Command="{Binding RestoreSettingsCommand}" Content="Restore JSON" Style="{StaticResource ActionButtonStyle}"/>
+                            </Grid>
+
+                            <Button Command="{Binding OpenSettingsFolderCommand}" Content="Open settings.json Folder" Style="{StaticResource ActionButtonStyle}" Margin="0,0,0,10"/>
+
+                            <Border Height="1" Background="#F1F5F9" Margin="0,0,0,10"/>
+
+                            <!-- Software Updates -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Software Updates" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}"/>
+                                    <TextBlock Text="{Binding UpdateStatusText}" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Command="{Binding CheckForUpdatesCommand}" Content="Check GitHub" Style="{StaticResource ActionButtonStyle}"/>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- 2. Minimalist Footer -->
+            <Grid Grid.Row="2" Margin="14,0,14,4" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="v1.3.0 (Up to date)" FontSize="10.5" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Background="Transparent" BorderThickness="0" Cursor="Hand" Click="GitHubLink_Click" VerticalAlignment="Center">
+                    <TextBlock Text="GitHub ↗" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource AccentTeal}"/>
+                </Button>
+            </Grid>
+        </Grid>
+    </Border>
 </Window>

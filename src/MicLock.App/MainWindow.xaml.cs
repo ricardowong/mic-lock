@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Input;
 using MicLock.App.ViewModels;
 
 namespace MicLock.App;
@@ -44,6 +46,38 @@ public partial class MainWindow : Window
     {
         _isExplicitExit = true;
         Close();
+    }
+
+    private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left)
+        {
+            DragMove();
+        }
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Hide();
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+        Hide();
+    }
+
+    private void GitHubLink_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://github.com/ricardowong/mic-lock",
+                UseShellExecute = true
+            });
+        }
+        catch { }
     }
 
     protected override void OnStateChanged(EventArgs e)
